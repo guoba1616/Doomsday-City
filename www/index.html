@@ -1,16 +1,15 @@
 <!DOCTYPE html>
 <!--
 =====================================================================
-  末日之城 —— 方块风格 · 守城打僵尸（Three.js r128 单文件，浏览器直接打开）
+  末日之城 —— 方块风格 · 架炮守城打僵尸（Three.js r128 单文件，浏览器直接打开）
 =====================================================================
-【玩法】站在城墙上行走射击；城内是村庄，城外是野外。僵尸从野外涌向城墙，啃城墙。
-  城墙耐久归零 = 城破，游戏结束。只需要守护这一面墙（两侧是悬崖）。
-【电脑操作】
-  点击画面 锁定鼠标 · WASD 移动 · Shift 冲刺 · 鼠标 视角 · 左键 射击 · 右键 瞄准（狙击枪开镜）
-  R 换弹 · 1-4 / 滚轮 切枪 · F 遥控机枪（再按 F 退出；遥控时 1-3 切换机枪）
-  T 命令：标记目标，所有士兵集火 · B 商店（波次之间）· N 立即开始下一波 · Esc 暂停
-【手机操作】左下摇杆移动 · 右半屏拖动视角 · 右下按钮：射击 / 瞄准 / 换弹 / 机枪 / 集火 / 切枪
-【打包 APK】本目录 www/ 可直接作为 Capacitor 的 webDir。
+【玩法】玩家在城墙上走动，选垛口架设炮台（重机枪 / 霰弹炮 / 火箭炮 / 反器材炮），
+  招募村民当炮手自动操作，也可以亲手操控任意一座炮台。城墙耐久归零 = 城破。
+【电脑操作】WASD 走动 · 鼠标看 · 右键望远镜 · Q 在脚下垛口建造（1-4 选类型）
+  炮台旁：G 派炮手 · U 升级 · X 拆除（按两次）· F 亲手操控（A/D / 滚轮切换炮台，F/E 离开）
+  T 命令炮手集火准星目标 · B 商店（修墙 / 工匠 / 炮手训练，波次之间）· N 立即开战 · Esc 暂停
+【手机操作】左下摇杆走动 · 右半屏拖动视角 · 右侧按钮随情境出现（建造 / 派炮手 / 升级 / 操控 / 射击…）
+【加新炮台】MOUNTS 里加一项 + Guns.model 里加外观即可。
 -->
 <html lang="zh">
 <head>
@@ -90,6 +89,19 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Mi
 #tShop{right:14px;top:110px;width:60px;height:60px;font-size:13px}#tPause{right:14px;top:180px;width:60px;height:60px;font-size:13px}
 #tNext{right:14px;top:250px;width:60px;height:60px;font-size:12px}
 #loaderr{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#000;z-index:99;padding:30px;text-align:center}
+#gunInfo{position:absolute;right:16px;bottom:16px;text-align:right}
+#gunInfo .n{font-size:26px;font-weight:bold}#gunInfo .n small{font-size:15px;color:#ccc}#gunInfo .w{font-size:14px;color:#ffd75a}
+#buildMenu{position:absolute;right:14px;top:50%;transform:translateY(-50%);width:min(290px,46vw);padding:10px;display:none;pointer-events:auto}
+#buildMenu .bmT{text-align:center;font-weight:bold;margin:2px 0 6px;color:#ffd75a}
+#buildMenu .bm{padding:5px 8px;margin:3px 0;background:rgba(255,255,255,.07);border:2px solid #333;cursor:pointer;font-size:15px}
+#buildMenu .bm b{display:inline-block;width:22px;height:22px;text-align:center;background:#c9a23a;color:#111;margin-right:6px}
+#buildMenu .bm span{float:right;color:#ffd75a}#buildMenu .bm small{display:block;font-size:12px;color:#aaa}
+#buildMenu .bm.no{opacity:.45}
+#tCtrl{right:calc(4vw + 110px);bottom:5vh}#tSw{right:calc(4vw + 12px);bottom:calc(8vh + 110px)}
+#tBuild{right:4vw;bottom:8vh;width:90px;height:90px}#tCrew{right:calc(4vw + 100px);bottom:calc(8vh + 90px)}
+#tUp{right:calc(4vw + 12px);bottom:calc(8vh + 110px)}#tDel{right:calc(4vw + 195px);bottom:calc(8vh + 60px);width:56px;height:56px;font-size:13px}
+#tMark{right:calc(4vw + 200px);bottom:5vh}#tAim{right:calc(4vw + 100px);bottom:calc(8vh + 90px)}
+#tStart{right:14px;top:250px;width:60px;height:60px;font-size:12px}
 </style>
 </head>
 <body>
@@ -100,12 +112,12 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Mi
   <div id="wallbox" class="px">城墙<div id="wallbar"><div id="wallfill"></div><div id="walltxt"></div></div></div>
   <div id="tr" class="px"><div>💰 <b id="gold">0</b></div><div>👥 村民 <b id="pop">0</b></div></div>
   <div id="units" class="px"></div>
-  <div id="scope"></div>
-  <div id="cross"></div>
-  <div id="heat" class="px">机枪温度<div id="heatbar"><div id="heatfill"></div></div></div>
+  <div id="cross" class="dot"></div>
+  <div id="heat" class="px"><span id="heatLbl">温度</span><div id="heatbar"><div id="heatfill"></div></div></div>
   <div id="hint" class="px"></div>
   <div id="bar"></div>
-  <div id="ammo" class="px"><div class="w" id="wName"></div><span class="n" id="aMag">0</span> <span class="r" id="aRes">/ 0</span></div>
+  <div id="gunInfo" class="px"></div>
+  <div id="buildMenu" class="panel"></div>
   <div id="announce" class="px"></div>
   <div id="toast" class="px"></div>
   <div id="vign"></div>
@@ -115,18 +127,21 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Mi
   <div id="joy"><div id="knob"></div></div>
   <div class="tb" id="tFire">射击</div>
   <div class="tb" id="tAim">瞄准</div>
-  <div class="tb" id="tReload">换弹</div>
-  <div class="tb" id="tTurret">机枪</div>
+  <div class="tb" id="tCtrl">操控</div>
+  <div class="tb" id="tSw">切换</div>
+  <div class="tb" id="tBuild">建造</div>
+  <div class="tb" id="tCrew">派炮手</div>
+  <div class="tb" id="tUp">升级</div>
+  <div class="tb" id="tDel">拆除</div>
   <div class="tb" id="tMark">集火</div>
-  <div class="tb" id="tSwitch">切枪</div>
   <div class="tb" id="tShop">商店</div>
   <div class="tb" id="tPause">暂停</div>
-  <div class="tb" id="tNext">开战</div>
+  <div class="tb" id="tStart">开战</div>
 </div>
 
 <div class="screen show" id="title">
   <h1 class="px">末日之城</h1>
-  <p class="sub px">守住城墙，身后就是村庄</p>
+  <p class="sub px">架起炮台，守住城墙，身后就是村庄</p>
   <div><span class="btn" id="startBtn">开始游戏</span></div>
   <div class="ctrls panel" id="ctrlText"></div>
 </div>
@@ -140,7 +155,7 @@ html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Mi
 <div class="screen" id="shop">
   <div class="panel">
     <h2 class="px">补给站 · 💰 <span id="shopGold">0</span></h2>
-    <div id="tabs"><span class="btn on" data-tab="weapon">武器</span><span class="btn" data-tab="unit">招募</span><span class="btn" data-tab="def">城防</span></div>
+    <p style="font-size:13px;color:#bbb;margin:4px 0 8px">炮台在城墙上直接建造（Q）。这里修墙、招工匠、训练炮手。</p>
     <div id="items"></div>
     <div style="margin-top:10px"><span class="btn gray" id="shopClose">关闭 (B)</span><span class="btn red" id="shopNext">开始下一波 (N)</span></div>
   </div>
@@ -174,30 +189,32 @@ const CFG = {
   walk: { x:42.5, zMin:-1.6, zMax:1.15, eye:1.65, speed:5, sprint:8.5 },
   spawnZ: [108, 126],
   prepTime: 30,
-  startGold: 400,
+  startGold: 700,
   startPop: 12,
+  gunSpacing: 4.8,      // 两座炮台之间的最小距离（= 隔一个垛口）
+  gunZ: 1.15,           // 炮台在走道上的位置（靠外沿）
+  pitchMin: -1.4, pitchMax: 0.3, yawMax: 1.45,
 };
-const WEAPONS = {
-  pistol:  { name:'手枪',   key:1, dmg:34,  rate:0.25, mag:12, reserve:Infinity, reload:1.1, spread:0.010, pellets:1, auto:false, range:140, price:0 },
-  rifle:   { name:'步枪',   key:2, dmg:38,  rate:0.10, mag:30, reserve:120, reload:1.8, spread:0.018, pellets:1, auto:true,  range:160, price:500, ammoPrice:60, ammoAmt:90 },
-  shotgun: { name:'霰弹枪', key:3, dmg:16,  rate:0.75, mag:6,  reserve:30,  reload:2.2, spread:0.075, pellets:9, auto:false, range:45,  price:400, ammoPrice:50, ammoAmt:18 },
-  sniper:  { name:'狙击枪', key:4, dmg:220, rate:1.1,  mag:5,  reserve:20,  reload:2.5, spread:0.002, pellets:1, auto:false, range:300, price:900, ammoPrice:80, ammoAmt:10, pierce:3, scope:true },
+// 架设武器（炮台）。以后加新炮台只需在这里加一项 + Guns.model 里加外观
+const MOUNTS = {
+  mg:      { name:'重机枪',   key:1, price:300, dmg:14,  rate:0.08, pellets:1, spread:0.015, heat:0.05, range:200, color:0x4a5a3a, desc:'射速快，持续扫射；打久了会过热。' },
+  shotgun: { name:'霰弹炮',   key:2, price:450, dmg:14,  rate:0.8,  pellets:8, spread:0.07,  heat:0.14, range:55,  color:0x6a4a2a, desc:'近距离一大片，专清墙根下的尸群。' },
+  rocket:  { name:'火箭炮',   key:3, price:800, dmg:110, rate:1.6,  splash:3.8, speed:50,   heat:0.24, range:220, color:0x5a5a2a, desc:'爆炸范围伤害，炸开密集尸群。' },
+  cannon:  { name:'反器材炮', key:4, price:700, dmg:200, rate:1.8,  pellets:1, spread:0.002, pierce:4, heat:0.2, range:300, color:0x3a4048, desc:'一发穿透多只，专克巨尸。右键瞄准。' },
 };
-const WEAPON_ORDER = ['pistol','rifle','shotgun','sniper'];
+const MOUNT_ORDER = ['mg','shotgun','rocket','cannon'];
 const ZTYPES = {
   walker: { name:'行尸',   hp:80,  speed:1.5, dps:4,  gold:10, s:1.0,  c:{ skin:0x6f9e4a, shirt:0x3d6e8c, pants:0x34345a, eye:0xffd23a, hair:0x2a3a1a } },
   runner: { name:'疾行者', hp:50,  speed:3.8, dps:3,  gold:14, s:0.92, c:{ skin:0x93b85a, shirt:0x9a3b34, pants:0x4a3a2a, eye:0xff6a2a } },
   brute:  { name:'巨尸',   hp:650, speed:0.9, dps:18, gold:70, s:1.75, c:{ skin:0x4f7a34, shirt:0x5a4a3a, pants:0x2a2a3a, eye:0xff3030, hair:0x1a1a1a } },
 };
-const UNITS = {
-  militia:  { name:'民兵',   price:150, dmg:34,  rate:0.9, acc:0.7, range:75,  desc:'步枪射手，便宜可靠。', c:{ skin:0xd8a878, shirt:0x7a6a42, pants:0x4a4038, hair:0x5a6a3a } },
-  sniper:   { name:'狙击手', price:400, dmg:170, rate:2.2, acc:0.88, range:140, desc:'远程高伤害，优先打大家伙。', c:{ skin:0xc89868, shirt:0x3a4a30, pants:0x2a3424, hair:0x2a3020 } },
-  gunner:   { name:'机枪手', price:350, desc:'自动操作一台空闲机枪（需要有机枪）。', c:{ skin:0xd0a070, shirt:0x4a5a6a, pants:0x2a3038, hair:0x3a4048 } },
-  engineer: { name:'工匠',   price:250, repair:5, desc:'每秒修复城墙 5 点（最多 4 名）。', c:{ skin:0xe0b088, shirt:0xb86a2a, pants:0x4a3a2a, hair:0xd8b030 } },
+const CREW = {
+  gunner:   { name:'炮手', price:150, c:{ skin:0xd0a070, shirt:0x4a5a6a, pants:0x2a3038, hair:0x3a4048 } },
+  engineer: { name:'工匠', price:250, repair:5, c:{ skin:0xe0b088, shirt:0xb86a2a, pants:0x4a3a2a, hair:0xd8b030 } },
 };
-const SOLDIER_SLOTS = [-38,-33,-28,-17,-12,-7,7,12,17,28,33,38];
-const TURRET_SLOTS = [0,-22,22];
 const ENGINEER_SLOTS = [-30,-10,10,30];
+const GUN_XS = []; for(let k=0;k<=34;k++) GUN_XS.push(+(-41.6+2.4*k).toFixed(1));   // 垛口之间的空位
+const START_GUN_X = -0.8;
 
 /* =====================================================================
    1. 音效（WebAudio 合成）
@@ -225,14 +242,16 @@ const Sfx = {
     o.connect(g); g.connect(this.master); o.start(t); o.stop(t+dur+0.02);
   },
   throttle(k, gap){ const n=performance.now(); if(this.last[k] && n-this.last[k]<gap) return false; this.last[k]=n; return true; },
-  shot(id){
-    if(id==='pistol'){ this.noise(0.12,2200,0.5); this.tone(180,60,0.08,0.15); }
-    else if(id==='rifle'){ this.noise(0.1,2600,0.45); this.tone(160,50,0.07,0.15); }
-    else if(id==='shotgun'){ this.noise(0.3,1200,0.8); this.tone(110,40,0.18,0.25); }
-    else if(id==='sniper'){ this.noise(0.5,1800,0.9); this.tone(90,30,0.3,0.3); }
-    else if(id==='mg'){ this.noise(0.08,1600,0.4); this.tone(120,50,0.05,0.12); }
-    else if(id==='unit'){ if(this.throttle('unit',60)) this.noise(0.09,1400,0.12); }
+  shot(id, quiet){
+    if(quiet && !this.throttle('q'+id, id==='mg'?90:40)) return;
+    const k=quiet?0.3:1;
+    if(id==='mg'){ this.noise(0.09,1600,0.45*k); this.tone(120,50,0.06,0.14*k); }
+    else if(id==='shotgun'){ this.noise(0.35,1100,0.85*k); this.tone(100,40,0.2,0.28*k); }
+    else if(id==='rocket'){ this.noise(0.5,700,0.6*k,'bandpass',1); this.tone(300,120,0.4,0.12*k,'sawtooth'); }
+    else if(id==='cannon'){ this.noise(0.6,1500,0.95*k); this.tone(80,28,0.35,0.32*k); }
   },
+  boom(){ this.noise(0.9,450,0.9); this.tone(80,25,0.7,0.4,'sine'); },
+  build(){ this.noise(0.15,900,0.3); setTimeout(()=>this.noise(0.15,700,0.3),140); this.tone(500,700,0.12,0.08); },
   hit(){ if(this.throttle('hit',40)) this.noise(0.06,900,0.25,'bandpass',2); },
   kill(){ this.tone(300,80,0.15,0.08,'sawtooth'); },
   reload(){ this.tone(900,700,0.05,0.08); setTimeout(()=>this.tone(600,900,0.06,0.08),350); },
@@ -359,7 +378,6 @@ const World = {
     S.push([W.half*2,top,4,0xb0a898,0,top/2,0]);                    // 墙体
     S.push([W.half*2,0.55,0.6,0xa09888,0,top+0.275,1.7]);              // 外沿矮墙
     for(let x=-W.half+1.2; x<W.half; x+=2.4){
-      if(TURRET_SLOTS.some(t=>Math.abs(t-x)<1.6)) continue;
       S.push([1.2,0.5,0.6,0xb8b0a0,x,top+0.8,1.7]);               // 垛口
     }
     S.push([W.half*2,0.5,0.5,0x9a9284,0,0.25,2.2]);                // 墙脚
@@ -539,10 +557,10 @@ const Zombies = {
   },
   spawn(type, wave){
     const T=ZTYPES[type], h=buildHuman(humanGeos(T.c), T.s);
-    const x=rand(-40,40), z=rand(CFG.spawnZ[0],CFG.spawnZ[1]);
+    const xr=40*Math.min(1,0.45+0.11*wave), x=rand(-xr,xr), z=rand(CFG.spawnZ[0],CFG.spawnZ[1]);
     h.root.position.set(x,0,z); h.root.rotation.y=Math.PI; scene.add(h.root);
     h.armL.rotation.x=h.armR.rotation.x=-Math.PI/2+0.15;
-    const hpMul=1+0.09*(wave-1);
+    const hpMul=1+0.12*(wave-1);
     this.list.push({ type, T, h, s:T.s, hp:T.hp*hpMul, maxHp:T.hp*hpMul, speed:T.speed*rand(0.85,1.15)*(1+0.02*wave), x, ph:Math.random()*6,
       state:'walk', atkZ: CFG.wall.front+0.45*T.s+rand(0,0.7), dead:0, alive:true, wob:rand(0,6), groan:rand(3,12) });
   },
@@ -638,69 +656,12 @@ const Wall = {
 };
 
 /* =====================================================================
-   9. 机枪（可遥控 / 机枪手自动操作）
+   9. 炮台（玩家建造 / 亲手操控 / 炮手自动操作）
    ===================================================================== */
-const Turrets = {
-  list:[], lvl:0,
-  build(x){
-    const root=new THREE.Group(); root.position.set(x,CFG.wall.top,1.05); scene.add(root);
-    const base=new THREE.Mesh(mergeBoxes([[0.9,0.25,0.9,0x3a3a3a,0,0.12,0],[0.25,0.9,0.25,0x4a4a4a,0,0.6,0]]),BLOCK_MAT); root.add(base);
-    const yaw=new THREE.Group(); yaw.position.y=1.15; root.add(yaw);
-    const pitch=new THREE.Group(); yaw.add(pitch);
-    const gun=new THREE.Mesh(mergeBoxes([
-      [0.36,0.32,0.8,0x2f3530,0,0,0],[0.14,0.14,1.2,0x1a1a1a,0,0.02,0.95],[0.2,0.2,0.18,0x1a1a1a,0,0.02,1.55],
-      [1.2,0.75,0.07,0x4a5a3a,0,0.1,0.48],[0.3,0.22,0.3,0x5a6a3a,0.32,-0.06,0.05],[0.08,0.25,0.08,0x1a1a1a,-0.12,-0.25,-0.38],[0.08,0.25,0.08,0x1a1a1a,0.12,-0.25,-0.38],
-      [0.06,0.12,0.06,0xd8b030,0,0.22,0.3]
-    ]),BLOCK_MAT); gun.castShadow=SHADOWS; pitch.add(gun);
-    const flash=new THREE.Mesh(new THREE.BoxGeometry(0.45,0.45,0.45),glowMat(0xffd070)); flash.position.set(0,0.02,1.8); flash.visible=false; pitch.add(flash);
-    const muzzle=new THREE.Object3D(); muzzle.position.set(0,0.02,1.75); pitch.add(muzzle);
-    const t={ x, root, yawG:yaw, pitchG:pitch, flash, muzzle, yaw:0, pitch:-0.15, heat:0, over:false, cd:0, gunner:null, flashT:0 };
-    this.list.push(t); return t;
-  },
-  dmg(){ return 30*(1+0.3*this.lvl); },
-  fire(t, dir, origin, acc){   // acc: null = 玩家（准星射线），数字 = 自动命中率
-    if(t.over || t.cd>0) return;
-    t.cd = t.gunner && !acc ? 0.065 : (acc!=null?0.11:0.065);
-    t.heat += 0.03; if(t.heat>=1){ t.heat=1; t.over=true; Sfx.overheat(); }
-    t.flashT=0.04; Sfx.shot(acc!=null?'unit':'mg');
-    const m=new V3(); t.muzzle.getWorldPosition(m);
-    const d=dir.clone(); d.x+=rand(-1,1)*0.012; d.y+=rand(-1,1)*0.012; d.z+=rand(-1,1)*0.012; d.normalize();
-    let end;
-    if(acc==null){
-      const hits=Zombies.raycast(origin,d,220);
-      if(hits.length){ const h=hits[0]; end=origin.clone().addScaledVector(d,h.t); Zombies.damage(h.z,this.dmg(),h.head,end,'player'); Game.hitmark(); }
-      else end=groundEnd(origin,d,220);
-    } else {
-      const tz=acc.target, p=tz.h.root.position, hitp=new V3(p.x,p.y+rand(0.5,1.6)*tz.s,p.z);
-      if(Math.random()<acc.p){ Zombies.damage(tz,this.dmg()*0.8,false,hitp,'unit'); end=hitp; }
-      else { end=hitp.clone().add(new V3(rand(-2,2),rand(-1,1),rand(-2,2))); end.y=Math.max(0,end.y); Fx.burst(end,0x7a6a50,2,1.5,0.08); }
-    }
-    Fx.tracer(m,end,0xffc060);
-  },
-  update(dt){
-    const cool = 0.32*(1+0.2*this.lvl);
-    for(const t of this.list){
-      t.cd-=dt; t.flashT-=dt; t.flash.visible=t.flashT>0; if(t.flash.visible) t.flash.rotation.z=Math.random()*3;
-      t.heat=Math.max(0,t.heat-cool*dt); if(t.over && t.heat<0.35) t.over=false;
-      const controlled = Player.mode==='turret' && Turrets.list[Player.turretIdx]===t;
-      if(!controlled && t.gunner && Game.state!=='over'){
-        const tz=pickTarget(new V3(t.x,7,1), 95, (z)=>{ const p=z.h.root.position; return Math.abs(Math.atan2(p.x-t.x,p.z-1))<1.2 && p.z>5; });
-        if(tz){
-          const p=tz.h.root.position, dx=p.x-t.x, dz=p.z-1, dy=(p.y+1*tz.s)-7.15;
-          const wy=Math.atan2(dx,dz), wp=Math.atan2(dy,Math.hypot(dx,dz));
-          t.yaw+=clamp(wy-t.yaw,-2.2*dt,2.2*dt); t.pitch+=clamp(wp-t.pitch,-2*dt,2*dt);
-          if(Math.abs(wy-t.yaw)<0.08 && !t.over && t.heat<0.9) this.fire(t,dirFrom(t.yaw,t.pitch),null,{target:tz,p:0.45});
-        }
-      }
-      t.yawG.rotation.y=t.yaw; t.pitchG.rotation.x=-t.pitch;
-      if(t.gunner) t.gunner.h.root.rotation.y=t.yaw;
-    }
-  },
-  clear(){ for(const t of this.list) scene.remove(t.root); this.list.length=0; this.lvl=0; }
-};
 function dirFrom(yaw,pitch){ return new V3(Math.sin(yaw)*Math.cos(pitch), Math.sin(pitch), Math.cos(yaw)*Math.cos(pitch)); }
-function groundEnd(o,d,max){ if(d.y<-0.001){ const t=-o.y/d.y; if(t<max){ const e=o.clone().addScaledVector(d,t); Fx.burst(e,0x6a5a40,3,1.8,0.09); return e; } } return o.clone().addScaledVector(d,max); }
-// 目标选择：集火标记优先，否则离城墙最近（威胁最大）的
+function groundPoint(o,d,max){ if(d.y<-0.001){ const t=-o.y/d.y; if(t<max) return o.clone().addScaledVector(d,t); } return o.clone().addScaledVector(d,max); }
+function groundEnd(o,d,max){ const e=groundPoint(o,d,max); if(e.y<0.05) Fx.burst(e,0x6a5a40,3,1.8,0.09); return e; }
+// 目标选择：集火标记优先，否则离城墙最近（威胁最大）的；preferBig = 优先巨尸
 function pickTarget(from, range, filter, preferBig){
   const m=Zombies.marked;
   if(m && m.alive && m.h.root.position.distanceTo(from)<range && (!filter||filter(m))) return m;
@@ -714,186 +675,262 @@ function pickTarget(from, range, filter, preferBig){
   return best;
 }
 
-/* =====================================================================
-   10. 招募的士兵
-   ===================================================================== */
-const Army = {
-  list:[],
-  recruit(type){
-    const U=UNITS[type]; let x, z=0.75;
-    if(type==='engineer'){ x=ENGINEER_SLOTS.find(s=>!this.list.some(u=>u.type==='engineer'&&u.x===s)); z=-1.1; }
-    else if(type==='gunner'){ const t=Turrets.list.find(t=>!t.gunner); if(!t) return false; x=t.x-0.9; }
-    else x=SOLDIER_SLOTS.find(s=>!this.list.some(u=>u.x===s && u.type!=='engineer' && u.type!=='gunner'));
-    if(x==null) return false;
-    const c={...U.c}; if(type!=='engineer') { c.helmet=c.hair; c.vest=0x3a3a2a; }
-    const h=buildHuman(humanGeos(c),1); h.root.position.set(x,CFG.wall.top,z); scene.add(h.root);
-    if(type==='militia'||type==='sniper'){
-      const gun=new THREE.Mesh(mergeBoxes(type==='sniper'?[[0.08,0.1,1.3,0x2a2a2a,0,0,0.4],[0.1,0.12,0.3,0x1a1a1a,0,0.11,0.2],[0.1,0.18,0.4,0x6a4a2a,0,-0.05,-0.15]]:[[0.08,0.12,0.9,0x2a2a2a,0,0,0.3],[0.1,0.18,0.35,0x6a4a2a,0,-0.05,-0.12],[0.06,0.2,0.08,0x1a1a1a,0,-0.15,0.2]]),BLOCK_MAT);
-      gun.position.set(0.12,1.3,0.25); h.hip.add(gun); h.armL.rotation.x=h.armR.rotation.x=-1.35; h.armL.rotation.z=-0.35;
-    }
-    const u={ type, U, h, x, cd:rand(0,1), ph:Math.random()*6, flash:0 };
-    if(type==='gunner'){ const t=Turrets.list.find(t=>!t.gunner); t.gunner=u; u.turret=t; h.root.position.z=0.55; h.root.position.x=t.x-0.85; h.armL.rotation.x=h.armR.rotation.x=-1.2; }
-    this.list.push(u); return true;
+const Guns = {
+  list:[], crewLvl:0,
+  model(type, M){
+    const D=0x2f3530, K=0x1a1a1a, C=M.color;
+    const common=[[1.2,0.75,0.07,C,0,0.1,0.48],[0.08,0.25,0.08,K,-0.12,-0.25,-0.38],[0.08,0.25,0.08,K,0.12,-0.25,-0.38]];
+    const parts={
+      mg:      [[0.36,0.32,0.8,D,0,0,0],[0.14,0.14,1.2,K,0,0.02,0.95],[0.2,0.2,0.18,K,0,0.02,1.55],[0.3,0.22,0.3,0x5a6a3a,0.32,-0.06,0.05],[0.06,0.12,0.06,0xd8b030,0,0.22,0.3]],
+      shotgun: [[0.44,0.36,0.8,D,0,0,0],[0.34,0.24,0.9,0x3a3a3a,0,0.02,0.85],[0.46,0.34,0.16,K,0,0.02,1.35],[0.3,0.3,0.3,0x8a3a2a,0.38,-0.05,0]],
+      rocket:  [[0.36,0.3,0.6,D,0,-0.1,0],[0.42,0.42,1.7,C,0,0.18,0.35],[0.48,0.48,0.12,K,0,0.18,1.2],[0.48,0.48,0.12,K,0,0.18,-0.5],[0.22,0.22,0.2,0xd84a2a,0,0.18,1.28]],
+      cannon:  [[0.34,0.3,0.9,D,0,0,0],[0.12,0.12,2.0,K,0,0.02,1.4],[0.26,0.18,0.22,K,0,0.02,2.45],[0.1,0.1,0.45,K,0,0.24,0.1],[0.14,0.14,0.06,0x6ab0e0,0,0.24,0.34]],
+    }[type];
+    return { geo:mergeBoxes(common.concat(parts)), muzzle:{mg:[0.02,1.7],shotgun:[0.02,1.45],rocket:[0.18,1.35],cannon:[0.02,2.6]}[type] };
   },
-  count(type){ return this.list.filter(u=>u.type===type).length; },
-  canRecruit(type){
-    if(Game.pop<=0) return '村民不足';
-    if(type==='engineer') return this.count('engineer')<ENGINEER_SLOTS.length?null:'工匠已满';
-    if(type==='gunner') return Turrets.list.some(t=>!t.gunner)?null:'没有空闲机枪';
-    return this.list.filter(u=>u.type==='militia'||u.type==='sniper').length<SOLDIER_SLOTS.length?null:'墙上站满了';
+  build(type, x){
+    const M=MOUNTS[type], root=new THREE.Group(); root.position.set(x,CFG.wall.top,CFG.gunZ); scene.add(root);
+    root.add(new THREE.Mesh(mergeBoxes([[0.9,0.25,0.9,0x3a3a3a,0,0.12,0],[0.25,0.9,0.25,0x4a4a4a,0,0.6,0]]),BLOCK_MAT));
+    const yawG=new THREE.Group(); yawG.position.y=1.15; root.add(yawG);
+    const pitchG=new THREE.Group(); yawG.add(pitchG);
+    const md=this.model(type,M), gun=new THREE.Mesh(md.geo,BLOCK_MAT); gun.castShadow=SHADOWS; pitchG.add(gun);
+    const flash=new THREE.Mesh(new THREE.BoxGeometry(0.45,0.45,0.45),glowMat(0xffd070)); flash.position.set(0,md.muzzle[0],md.muzzle[1]+0.1); flash.visible=false; pitchG.add(flash);
+    const muzzle=new THREE.Object3D(); muzzle.position.set(0,md.muzzle[0],md.muzzle[1]); pitchG.add(muzzle);
+    const stars=new THREE.Group(); stars.position.set(0,1.05,-0.45); root.add(stars);   // 等级标记（金色小方块）
+    const t={ type, M, x, root, yawG, pitchG, flash, muzzle, stars, yaw:0, pitch:-0.15, heat:0, over:false, cd:0, gunner:null, flashT:0, lvl:1, spent:M.price };
+    this.list.push(t); this.list.sort((a,b)=>a.x-b.x); this.refreshStars(t);
+    Fx.burst(new V3(x,CFG.wall.top+0.5,CFG.gunZ),0xa09888,10,2.5,0.14);
+    return t;
+  },
+  refreshStars(t){ t.stars.clear(); for(let i=0;i<t.lvl;i++){ const s=new THREE.Mesh(boxGeoUnit,glowMat(0xffd040)); s.scale.setScalar(0.12); s.position.x=(i-(t.lvl-1)/2)*0.2; t.stars.add(s); } },
+  remove(t){
+    if(t.gunner){ scene.remove(t.gunner.h.root); Game.pop++; }
+    scene.remove(t.root); this.list.splice(this.list.indexOf(t),1);
+  },
+  near(x, r=1.7){ let best=null, bd=r; for(const t of this.list){ const d=Math.abs(t.x-x); if(d<bd){ bd=d; best=t; } } return best; },
+  canBuildAt(x){ return !this.list.some(t=>Math.abs(t.x-x)<CFG.gunSpacing-0.01); },
+  dmg(t){ return t.M.dmg*(1+0.3*(t.lvl-1)); },
+  upPrice(t){ return Math.round(t.M.price*0.6*t.lvl); },
+  isControlled(t){ return Player.mode==='gun' && this.list[Player.gunIdx]===t; },
+  // aimO/aimD：瞄准射线（玩家 = 相机中心；炮手 = 炮台枢轴）
+  fire(t, aimO, aimD, auto){
+    if(t.over || t.cd>0) return false;
+    const M=t.M; t.cd=M.rate*(auto?1.6:1);
+    t.heat+=M.heat; if(t.heat>=1){ t.heat=1; t.over=true; if(!auto) Sfx.overheat(); }
+    t.flashT=0.05; Sfx.shot(t.type, auto);
+    const m=new V3(); t.muzzle.getWorldPosition(m);
+    const dmg=this.dmg(t)*(auto?0.7:1), spreadAdd=auto?0.02*(1-0.2*this.crewLvl):0, by=auto?'unit':'player';
+    if(!auto){ Game.shake=Math.max(Game.shake, t.type==='mg'?0.02:0.07); }
+    if(M.splash){
+      const hits=Zombies.raycast(aimO,aimD,M.range);
+      const tp=hits.length? aimO.clone().addScaledVector(aimD,hits[0].t) : groundPoint(aimO,aimD,M.range);
+      const d=tp.sub(m).normalize(); d.x+=rand(-1,1)*spreadAdd; d.y+=rand(-1,1)*spreadAdd; d.normalize();
+      Rockets.launch(m,d,M.speed,dmg,M.splash,by); return true;
+    }
+    let hitAny=false;
+    for(let i=0;i<M.pellets;i++){
+      const sp=M.spread+spreadAdd;
+      const d=aimD.clone().add(new V3(rand(-1,1)*sp,rand(-1,1)*sp,rand(-1,1)*sp)).normalize();
+      const hits=Zombies.raycast(aimO,d,M.range); let left=M.pierce||1, end=null;
+      for(const h of hits){ if(left<=0) break; const p=aimO.clone().addScaledVector(d,h.t); const fo=M.pellets>1?clamp(1.3-h.t/M.range,0.35,1):1;
+        Zombies.damage(h.z,dmg*fo,h.head,p,by); hitAny=true; end=p; left--; }
+      if(!end || (M.pierce && left>0)) end=groundEnd(aimO,d,M.range);
+      if(i<4) Fx.tracer(m,end,M.pierce?0xc0e0ff:0xffc060);
+    }
+    if(hitAny && !auto){ Sfx.hit(); Game.hitmark(); }
+    return true;
   },
   update(dt){
-    for(const u of this.list){
-      const p=u.h.root.position;
-      if(u.type==='engineer'){
-        u.ph+=dt*8; u.h.armR.rotation.x=-1.2+Math.sin(u.ph)*0.8; u.h.root.rotation.y=0;
-        if(Wall.hp<Wall.max && Game.state!=='over'){ Wall.repair(u.U.repair*dt); if(Math.random()<dt*1.5) Fx.burst(new V3(p.x,p.y+0.9,p.z+0.6),0xffd070,1,1,0.05,0.3); }
-        continue;
-      }
-      if(u.type==='gunner') continue;
-      u.cd-=dt;
-      const from=new V3(p.x,p.y+1.6,p.z), tz=pickTarget(from,u.U.range,null,u.type==='sniper');
-      if(tz){
-        const tp=tz.h.root.position; u.h.root.rotation.y=Math.atan2(tp.x-p.x,tp.z-p.z);
-        if(u.cd<=0){
-          u.cd=u.U.rate*rand(0.85,1.15);
-          const d=tp.distanceTo(from), hitp=new V3(tp.x,tp.y+rand(0.6,1.7)*tz.s,tp.z), muzzle=new V3(p.x+Math.sin(u.h.root.rotation.y)*0.9,p.y+1.35,p.z+Math.cos(u.h.root.rotation.y)*0.9);
-          const chance=u.U.acc*(1-0.35*d/u.U.range);
-          if(Math.random()<chance){ Zombies.damage(tz,u.U.dmg,u.type==='sniper'&&Math.random()<0.4,hitp,'unit'); Fx.tracer(muzzle,hitp,0xfff0b0); }
-          else { const e=hitp.clone().add(new V3(rand(-1.5,1.5),rand(-0.5,1),rand(-1.5,1.5))); e.y=Math.max(0,e.y); Fx.tracer(muzzle,e,0xfff0b0); }
-          Sfx.shot('unit');
+    for(const t of this.list){
+      t.cd-=dt; t.flashT-=dt; t.flash.visible=t.flashT>0; if(t.flash.visible) t.flash.rotation.z=Math.random()*3;
+      t.heat=Math.max(0,t.heat-0.32*(1+0.15*(t.lvl-1))*dt); if(t.over && t.heat<0.35) t.over=false;
+      if(!this.isControlled(t) && t.gunner && Game.state==='combat'){
+        const piv=new V3(t.x,CFG.wall.top+1.15,CFG.gunZ);
+        const tz=pickTarget(piv, t.M.range*0.8, z=>{ const p=z.h.root.position; return Math.abs(Math.atan2(p.x-t.x,p.z-CFG.gunZ))<CFG.yawMax; }, t.type==='cannon'||t.type==='rocket');
+        if(tz){
+          const p=tz.h.root.position, aim=new V3(p.x,p.y+0.9*tz.s,p.z);
+          if(t.M.splash && tz.state==='walk') aim.z-=tz.speed*aim.distanceTo(piv)/t.M.speed;   // 火箭打提前量
+          const dx=aim.x-t.x, dz=aim.z-CFG.gunZ, dy=aim.y-piv.y;
+          const wy=Math.atan2(dx,dz), wp=clamp(Math.atan2(dy,Math.hypot(dx,dz)),CFG.pitchMin,CFG.pitchMax), rate=2.2*(1+0.3*this.crewLvl);
+          t.yaw+=clamp(wy-t.yaw,-rate*dt,rate*dt); t.pitch+=clamp(wp-t.pitch,-rate*dt,rate*dt);
+          if(Math.abs(wy-t.yaw)<0.06 && Math.abs(wp-t.pitch)<0.08 && !t.over && t.heat<0.85) this.fire(t,piv,dirFrom(t.yaw,t.pitch),true);
         }
-      } else u.h.root.rotation.y*=0.95;
+      }
+      t.yaw=clamp(t.yaw,-CFG.yawMax,CFG.yawMax);
+      t.yawG.rotation.y=t.yaw; t.pitchG.rotation.x=-t.pitch;
+      if(t.gunner){ const g=t.gunner.h; g.root.rotation.y=t.yaw*0.6; g.root.visible=!this.isControlled(t); }
     }
   },
-  clear(){ for(const u of this.list) scene.remove(u.h.root); this.list.length=0; }
+  clear(){ for(const t of this.list){ scene.remove(t.root); if(t.gunner) scene.remove(t.gunner.h.root); } this.list.length=0; this.crewLvl=0; }
+};
+const boxGeoUnit = new THREE.BoxGeometry(1,1,1);
+
+/* 火箭弹 */
+const Rockets = {
+  list:[], geo:new THREE.BoxGeometry(0.18,0.18,0.55), mat:new THREE.MeshBasicMaterial({color:0xd8d0b0}),
+  launch(p,d,speed,dmg,r,by){
+    const m=new THREE.Mesh(this.geo,this.mat); m.position.copy(p); scene.add(m);
+    this.list.push({ m, v:d.clone().multiplyScalar(speed), dmg, r, by, life:5, trail:0 });
+  },
+  update(dt){
+    for(let i=this.list.length-1;i>=0;i--){
+      const q=this.list[i], p=q.m.position; q.life-=dt; q.v.y-=1.5*dt; p.addScaledVector(q.v,dt);
+      q.m.lookAt(p.clone().add(q.v));
+      q.trail-=dt; if(q.trail<=0){ q.trail=0.02; Fx.burst(p,0xb0aaa0,1,0.3,0.16,-0.05); }
+      let hit = p.y<=0.15 || q.life<=0;
+      if(!hit) for(const z of Zombies.list){ if(!z.alive) continue; const zp=z.h.root.position; if(Math.abs(zp.x-p.x)<0.5*z.s+0.2 && Math.abs(zp.z-p.z)<0.5*z.s+0.2 && p.y<zp.y+1.9*z.s){ hit=true; break; } }
+      if(hit){ this.explode(q); scene.remove(q.m); this.list.splice(i,1); }
+    }
+  },
+  explode(q){
+    const p=q.m.position;
+    for(const z of Zombies.list){
+      if(!z.alive) continue; const zp=z.h.root.position, c=new V3(zp.x,zp.y+0.9*z.s,zp.z), d=c.distanceTo(p);
+      if(d<q.r+0.4*z.s) Zombies.damage(z,q.dmg*clamp(1.15-d/(q.r+0.5),0.25,1),false,c,q.by);
+    }
+    Fx.burst(p,0xff8a20,16,6,0.28,0.4); Fx.burst(p,0x4a4440,12,3.5,0.32,0.1); Fx.burst(p,0xffe070,6,8,0.12,0.6);
+    Sfx.boom(); Game.shake=Math.max(Game.shake,0.04+0.14*clamp(1-p.distanceTo(camera.position)/60,0,1));
+  },
+  clear(){ for(const q of this.list) scene.remove(q.m); this.list.length=0; }
 };
 
 /* =====================================================================
-   11. 玩家（第一人称，城墙上行走）
+   10. 人员：炮手（派到炮台）/ 工匠（修墙）
+   ===================================================================== */
+const Crew = {
+  engineers:[],
+  human(type){
+    const c={...CREW[type].c}; if(type==='gunner'){ c.helmet=c.hair; c.vest=0x3a3a2a; }
+    const h=buildHuman(humanGeos(c),1); scene.add(h.root); return h;
+  },
+  gunners(){ return Guns.list.filter(t=>t.gunner).length; },
+  assign(t){
+    const h=this.human('gunner'); h.root.position.set(t.x-0.85,CFG.wall.top,CFG.gunZ-0.6);
+    h.armL.rotation.x=h.armR.rotation.x=-1.2; t.gunner={h}; Game.pop--;
+    Fx.burst(new V3(t.x-0.85,CFG.wall.top+1,CFG.gunZ-0.6),0xffd070,6,1.5,0.08,0.3);
+  },
+  hireEngineer(){
+    const x=ENGINEER_SLOTS.find(s=>!this.engineers.some(e=>e.x===s)); if(x==null) return false;
+    const h=this.human('engineer'); h.root.position.set(x,CFG.wall.top,-1.1);
+    this.engineers.push({h,x,ph:Math.random()*6}); Game.pop--; return true;
+  },
+  update(dt){
+    for(const e of this.engineers){
+      e.ph+=dt*8; e.h.armR.rotation.x=-1.2+Math.sin(e.ph)*0.8;
+      if(Wall.hp<Wall.max && Game.state!=='over'){ Wall.repair(CREW.engineer.repair*dt); if(Math.random()<dt*1.5){ const p=e.h.root.position; Fx.burst(new V3(p.x,p.y+0.9,p.z+0.6),0xffd070,1,1,0.05,0.3); } }
+    }
+  },
+  clear(){ for(const e of this.engineers) scene.remove(e.h.root); this.engineers.length=0; }
+};
+
+/* =====================================================================
+   11. 玩家：墙上走动选位置建造；F 亲手操控炮台
    ===================================================================== */
 const Player = {
-  pos:new V3(4,CFG.wall.top,0), yaw:0, pitch:-0.08, mode:'walk', turretIdx:0,
-  owned:{}, cur:'pistol', cd:0, reloading:0, aiming:false, firing:false, latch:false, bob:0, kick:0,
-  view:null, guns:{}, muzzle:null, flash:null, flashT:0,
-  reset(){
-    this.pos.set(4,CFG.wall.top,0); this.yaw=0; this.pitch=-0.08; this.mode='walk'; this.turretIdx=0;
-    this.owned={ pistol:{ mag:WEAPONS.pistol.mag, res:Infinity } }; this.select('pistol'); this.reloading=0; this.cd=0;
+  pos:new V3(4,CFG.wall.top,0), yaw:0, pitch:-0.08, mode:'walk', gunIdx:0, bob:0, delArm:0,
+  reset(){ this.pos.set(4,CFG.wall.top,0); this.yaw=0; this.pitch=-0.08; this.mode='walk'; this.gunIdx=0; },
+  spotX(){ let best=GUN_XS[0]; for(const x of GUN_XS) if(Math.abs(x-this.pos.x)<Math.abs(best-this.pos.x)) best=x; return best; },
+  nearGun(){ return this.mode==='walk' ? Guns.near(this.pos.x) : null; },
+  enterGun(){
+    if(!Guns.list.length){ HUD.toast('还没有炮台：按 Q 先建一座'); return; }
+    let i=0, bd=Infinity; Guns.list.forEach((t,k)=>{ const d=Math.abs(t.x-this.pos.x); if(d<bd){ bd=d; i=k; } });
+    this.gunIdx=i; this.mode='gun'; Build.close(); HUD.bar();
   },
-  buildView(){
-    this.view=new THREE.Group(); this.view.scale.setScalar(0.62); camera.add(this.view);
-    const defs={
-      pistol:[[0.08,0.12,0.32,0x2a2a2a,0,0,-0.1],[0.07,0.18,0.09,0x3a2a1a,0,-0.12,0.02]],
-      rifle:[[0.09,0.12,0.75,0x2a2a2a,0,0,-0.25],[0.06,0.06,0.3,0x1a1a1a,0,0.01,-0.75],[0.08,0.2,0.08,0x1a1a1a,0,-0.14,-0.2],[0.1,0.14,0.3,0x6a4a2a,0,-0.03,0.25],[0.04,0.05,0.1,0x1a1a1a,0,0.09,-0.1]],
-      shotgun:[[0.1,0.11,0.8,0x3a3a3a,0,0.02,-0.3],[0.1,0.08,0.4,0x8a5a2a,0,-0.06,-0.4],[0.1,0.16,0.34,0x6a4a2a,0,-0.04,0.22]],
-      sniper:[[0.08,0.1,1.0,0x2a3a2a,0,0,-0.35],[0.11,0.11,0.35,0x1a1a1a,0,0.12,-0.15],[0.1,0.18,0.35,0x4a3a2a,0,-0.05,0.25]],
-    };
-    for(const k in defs){
-      const g=new THREE.Group();
-      g.add(new THREE.Mesh(mergeBoxes(defs[k]),BLOCK_MAT));
-      g.add(new THREE.Mesh(mergeBoxes([[0.13,0.13,0.16,0x3a3a3a,0,-0.1,0.08],[0.15,0.14,0.2,0x4a5a3a,0,-0.12,0.24]]),BLOCK_MAT));   // 手套 + 袖子
-      g.visible=false; this.view.add(g); this.guns[k]=g;
-    }
-    this.flash=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,0.12),glowMat(0xffe070)); this.view.add(this.flash); this.flash.visible=false;
-    this.muzzle=new THREE.Object3D(); this.view.add(this.muzzle);
-  },
-  select(id){
-    if(!this.owned[id]) return; this.cur=id; this.reloading=0; this.cd=0.2;
-    for(const k in this.guns) this.guns[k].visible=k===id;
-    const mz={pistol:-0.28,rifle:-0.92,shotgun:-0.72,sniper:-0.87}[id]; this.muzzle.position.set(0,0.01,mz); this.flash.position.set(0,0.01,mz-0.05);
-    HUD.bar();
-  },
-  cycle(dir){ const own=WEAPON_ORDER.filter(k=>this.owned[k]); const i=own.indexOf(this.cur); this.select(own[(i+dir+own.length)%own.length]); },
-  reload(){
-    const W=WEAPONS[this.cur], o=this.owned[this.cur];
-    if(this.reloading>0 || o.mag>=W.mag || o.res<=0) return; this.reloading=W.reload; Sfx.reload();
-  },
-  enterTurret(i){
-    if(!Turrets.list.length){ HUD.toast('还没有机枪'); return; }
-    this.turretIdx=clamp(i??this.turretIdx,0,Turrets.list.length-1); this.mode='turret'; this.aiming=false; HUD.bar();
-  },
-  exitTurret(){ this.mode='walk'; HUD.bar(); },
+  exitGun(){ this.mode='walk'; HUD.bar(); },
+  switchGun(dir){ if(this.mode!=='gun'||!Guns.list.length) return; this.gunIdx=(this.gunIdx+dir+Guns.list.length)%Guns.list.length; HUD.bar(); },
   look(dx,dy){
-    if(this.mode==='turret'){ const t=Turrets.list[this.turretIdx]; t.yaw=clamp(t.yaw-dx,-1.25,1.25); t.pitch=clamp(t.pitch-dy,-0.95,0.3); }
-    else { const k=this.aiming?(WEAPONS[this.cur].scope?0.25:0.6):1; this.yaw-=dx*k; this.pitch=clamp(this.pitch-dy*k,-1.45,1.4); }
+    if(this.mode==='gun'){ const t=Guns.list[this.gunIdx]; if(!t) return; const k=Input.state().aim && t.type==='cannon'?0.4:1;
+      t.yaw=clamp(t.yaw-dx*k,-CFG.yawMax,CFG.yawMax); t.pitch=clamp(t.pitch-dy*k,CFG.pitchMin,CFG.pitchMax); }
+    else { this.yaw-=dx; this.pitch=clamp(this.pitch-dy,-1.45,1.4); }
   },
   update(dt, input){
-    const W=WEAPONS[this.cur], o=this.owned[this.cur];
-    if(this.mode==='turret'){
-      const t=Turrets.list[this.turretIdx], d=dirFrom(t.yaw,t.pitch);
-      const piv=new V3(t.x,CFG.wall.top+1.15,1.05);
+    if(this.mode==='gun'){
+      const t=Guns.list[this.gunIdx]; if(!t){ this.exitGun(); return; }
+      const d=dirFrom(t.yaw,t.pitch), piv=new V3(t.x,CFG.wall.top+1.15,CFG.gunZ);
       camera.position.copy(piv).addScaledVector(d,-2.3).add(new V3(0,0.75,0));
-      camera.lookAt(camera.position.clone().addScaledVector(d,10).add(new V3(0,-0.75*0.3,0)));
-      // 准星射线 = 相机中心
-      if(input.fire){ const cd=new V3(); camera.getWorldDirection(cd); this.fireTurret(t,cd); }
-      this.view.visible=false; camera.fov=lerp(camera.fov,65,dt*10); camera.updateProjectionMatrix();
+      camera.lookAt(camera.position.clone().addScaledVector(d,10).add(new V3(0,-0.22,0)));
+      const tf=input.aim? (t.type==='cannon'?24:50) : 65; camera.fov=lerp(camera.fov,tf,dt*10); camera.updateProjectionMatrix();
+      if(input.fire){ const cd=new V3(); camera.getWorldDirection(cd); Guns.fire(t,camera.position.clone(),cd,false); }
       return;
     }
-    this.view.visible=true;
-    // 移动
-    const sp=(input.sprint&&!this.aiming?CFG.walk.sprint:CFG.walk.speed);
+    const sp=input.sprint?CFG.walk.sprint:CFG.walk.speed;
     const f=new V3(Math.sin(this.yaw),0,Math.cos(this.yaw)), r=new V3(-Math.cos(this.yaw),0,Math.sin(this.yaw));
-    const mv=new V3().addScaledVector(f,input.my).addScaledVector(r,input.mx); const ml=mv.length();
-    if(ml>0.01){ mv.multiplyScalar(Math.min(1,ml)/ml*sp*(this.aiming?0.55:1)*dt); this.pos.add(mv); this.bob+=dt*sp*1.6*Math.min(1,ml); }
+    const mv=new V3().addScaledVector(f,input.my).addScaledVector(r,input.mx), ml=mv.length();
+    if(ml>0.01){ mv.multiplyScalar(Math.min(1,ml)/ml*sp*dt); this.pos.add(mv); this.bob+=dt*sp*1.6*Math.min(1,ml); }
     this.pos.x=clamp(this.pos.x,-CFG.walk.x,CFG.walk.x); this.pos.z=clamp(this.pos.z,CFG.walk.zMin,CFG.walk.zMax);
-    const bobY=Math.sin(this.bob*2)*0.04*Math.min(1,ml), bobX=Math.cos(this.bob)*0.03*Math.min(1,ml);
-    camera.position.set(this.pos.x,this.pos.y+CFG.walk.eye+bobY,this.pos.z);
-    const d=dirFrom(this.yaw,this.pitch); camera.lookAt(camera.position.clone().add(d));
-    // 瞄准 / FOV
-    this.aiming=input.aim && this.reloading<=0;
-    const tf=this.aiming?(W.scope?18:52):72; camera.fov=lerp(camera.fov,tf,dt*12); camera.updateProjectionMatrix();
-    // 换弹
-    if(this.reloading>0){ this.reloading-=dt; if(this.reloading<=0){ const need=W.mag-o.mag, take=Math.min(need,o.res); o.mag+=take; if(o.res!==Infinity) o.res-=take; } }
-    // 射击
-    this.cd-=dt;
-    if(!input.fire) this.latch=false;
-    if(input.fire && this.cd<=0 && this.reloading<=0 && !(this.latch && !W.auto)){
-      this.latch=true;
-      if(o.mag>0){ this.shoot(W); o.mag--; this.cd=W.rate; if(o.mag===0 && o.res>0) setTimeout(()=>this.reload(),150); }
-      else if(o.res>0) this.reload(); else { Sfx.empty(); this.cd=0.3; HUD.toast('没子弹了 · 去商店补充'); }
-    }
-    // 武器模型（瞄准居中 / 后坐 / 晃动 / 换弹下沉）
-    this.kick=Math.max(0,this.kick-dt*6);
-    const ax=this.aiming?0:0.24, ay=this.aiming?-0.13:-0.22, rl=this.reloading>0?Math.sin(Math.min(1,this.reloading/W.reload)*Math.PI)*0.25:0;
-    this.view.position.set(lerp(this.view.position.x,ax+bobX,dt*14), lerp(this.view.position.y,ay+bobY-rl,dt*14), -0.42+this.kick*0.12);
-    this.view.rotation.x=this.kick*0.25+rl*1.5;
-    this.view.visible=!(this.aiming&&W.scope&&camera.fov<30);
-    this.flashT-=dt; this.flash.visible=this.flashT>0;
+    camera.position.set(this.pos.x,this.pos.y+CFG.walk.eye+Math.sin(this.bob*2)*0.04*Math.min(1,ml),this.pos.z);
+    camera.lookAt(camera.position.clone().add(dirFrom(this.yaw,this.pitch)));
+    camera.fov=lerp(camera.fov,input.aim?40:72,dt*10); camera.updateProjectionMatrix();   // 右键 = 望远镜
+    this.delArm-=dt;
   },
-  shoot(W){
-    Sfx.shot(this.cur); this.kick=Math.min(1,this.kick+(W.pellets>1?1:this.cur==='sniper'?1:0.45)); this.flashT=0.04;
-    this.pitch+= (this.cur==='sniper'?0.03:this.cur==='shotgun'?0.04:0.008)*(this.aiming?0.5:1);
-    const o=camera.position.clone(), base=new V3(); camera.getWorldDirection(base);
-    const m=new V3(); this.muzzle.getWorldPosition(m);
-    let hitAny=false;
-    for(let i=0;i<W.pellets;i++){
-      const sp=W.spread*(this.aiming?0.35:1);
-      const d=base.clone().add(new V3(rand(-1,1)*sp,rand(-1,1)*sp,rand(-1,1)*sp)).normalize();
-      const hits=Zombies.raycast(o,d,W.range); let end=null, left=W.pierce||1;
-      for(const h of hits){ if(left<=0) break; const p=o.clone().addScaledVector(d,h.t); const falloff=W.pellets>1?clamp(1.4-h.t/W.range,0.3,1):1; Zombies.damage(h.z,W.dmg*falloff,h.head,p,'player'); hitAny=true; end=p; left--; }
-      if(!end || (W.pierce && left>0)) end=groundEnd(o,d,W.range);
-      if(i<3) Fx.tracer(m,end);
-    }
-    if(hitAny){ Sfx.hit(); Game.hitmark(); }
+};
+
+/* 建造菜单 + 预览虚影 */
+const Build = {
+  isOpen:false, ghost:null,
+  init(){
+    this.ghost=new THREE.Mesh(new THREE.BoxGeometry(1.3,1.7,1.3),new THREE.MeshBasicMaterial({color:0x40ff60,transparent:true,opacity:0.25,depthWrite:false}));
+    this.ghost.visible=false; scene.add(this.ghost);
   },
-  fireTurret(t, dir){ if(!t.over && t.cd<=0){ Turrets.fire(t,dir,camera.position.clone(),null); this.shakeT=0.03; } },
+  open(){
+    if(Player.mode!=='walk' || Game.state==='over') return;
+    if(Guns.near(Player.pos.x)){ HUD.toast('这里已经有炮台了'); return; }
+    this.isOpen=true; this.render();
+  },
+  close(){ this.isOpen=false; $('buildMenu').style.display='none'; this.ghost.visible=false; },
+  toggle(){ this.isOpen?this.close():this.open(); },
+  render(){
+    const el=$('buildMenu'); el.style.display='block';
+    el.innerHTML='<div class="bmT">在此建造炮台</div>'+MOUNT_ORDER.map(k=>{ const M=MOUNTS[k], ok=Game.gold>=M.price;
+      return `<div class="bm${ok?'':' no'}" data-k="${k}"><b>${IS_TOUCH?'':M.key}</b> ${M.name} <span>💰${M.price}</span><small>${M.desc}</small></div>`; }).join('')
+      +`<div class="bmT" style="font-size:12px;color:#aaa">${IS_TOUCH?'点选建造 · 再点「建造」取消':'按 1-4 建造 · Q 取消'}</div>`;
+    el.querySelectorAll('.bm').forEach(d=>d.onclick=()=>this.choose(d.dataset.k));
+  },
+  choose(k){
+    const M=MOUNTS[k], x=Player.spotX();
+    if(!Guns.canBuildAt(x)){ Sfx.deny(); HUD.toast('离其他炮台太近（至少隔一个垛口）'); return; }
+    if(Game.gold<M.price){ Sfx.deny(); HUD.toast('金币不足'); return; }
+    Game.gold-=M.price; Guns.build(k,x); Sfx.build(); this.close(); HUD.toast(`${M.name} 建好了 · 走过去按 ${IS_TOUCH?'「派炮手」':'G'} 派人操作`);
+  },
+  update(){
+    if(!this.isOpen) return;
+    const x=Player.spotX(), ok=Guns.canBuildAt(x);
+    this.ghost.visible=true; this.ghost.position.set(x,CFG.wall.top+0.85,CFG.gunZ); this.ghost.material.color.setHex(ok?0x40ff60:0xff4030);
+  }
+};
+
+/* 炮台旁的操作：派炮手 / 升级 / 拆除 */
+const Act = {
+  crew(){
+    const t=Player.nearGun(); if(!t){ HUD.toast('走到炮台旁边再派人'); return; }
+    if(t.gunner){ HUD.toast('这座炮台已经有炮手了'); return; }
+    if(Game.pop<=0){ Sfx.deny(); HUD.toast('村民不足（每波过后会有难民加入）'); return; }
+    if(Game.gold<CREW.gunner.price){ Sfx.deny(); HUD.toast('金币不足'); return; }
+    Game.gold-=CREW.gunner.price; Crew.assign(t); Sfx.buy(); HUD.toast(`炮手已就位：${t.M.name}`);
+  },
+  upgrade(){
+    const t=Player.nearGun(); if(!t) return;
+    if(t.lvl>=3){ HUD.toast('已经满级'); return; }
+    const p=Guns.upPrice(t); if(Game.gold<p){ Sfx.deny(); HUD.toast('金币不足'); return; }
+    Game.gold-=p; t.spent+=p; t.lvl++; Guns.refreshStars(t); Sfx.buy(); HUD.toast(`${t.M.name} 升到 Lv.${t.lvl}：伤害 +30%，散热更快`);
+  },
+  remove(){
+    const t=Player.nearGun(); if(!t) return;
+    if(Player.delArm<=0){ Player.delArm=2; HUD.toast(`再按一次拆除，返还 💰${Math.round(t.spent*0.5)}`); return; }
+    Player.delArm=0; Game.gold+=Math.round(t.spent*0.5); Guns.remove(t); Sfx.build(); HUD.toast('已拆除');
+  },
 };
 
 /* =====================================================================
    12. HUD
    ===================================================================== */
+const K = (key, touch) => IS_TOUCH ? `「${touch}」` : key;
 const HUD = {
   annT:null, toastT:null,
   bar(){
     const el=$('bar'); el.innerHTML='';
-    if(Player.mode==='turret'){
-      Turrets.list.forEach((t,i)=>{ const d=document.createElement('div'); d.className='slot'+(i===Player.turretIdx?' cur':''); d.innerHTML=`<i>${i+1}</i>机枪<br>${t.gunner?'有人':'空闲'}`; el.appendChild(d); });
-      return;
-    }
-    for(const k of WEAPON_ORDER){
-      const d=document.createElement('div'); d.className='slot'+(k===Player.cur?' cur':'')+(Player.owned[k]?'':' off');
-      d.innerHTML=`<i>${WEAPONS[k].key}</i><br>${WEAPONS[k].name}`; el.appendChild(d);
-    }
+    if(Player.mode!=='gun') return;
+    Guns.list.forEach((t,i)=>{ const d=document.createElement('div'); d.className='slot'+(i===Player.gunIdx?' cur':''); d.innerHTML=`<i>${'★'.repeat(t.lvl)}</i>${t.M.name}<br>${t.gunner?'有炮手':'无人'}`; el.appendChild(d); });
   },
   update(){
     $('waveTxt').textContent=`第 ${Game.wave} 波`;
@@ -903,78 +940,69 @@ const HUD = {
     const r=Wall.hp/Wall.max; $('wallfill').style.width=(r*100)+'%'; $('wallfill').classList.toggle('low',r<0.3);
     $('walltxt').textContent=`${Math.ceil(Wall.hp)} / ${Wall.max}`;
     $('vign').style.boxShadow=`inset 0 0 160px rgba(200,0,0,${Wall.flash>0 && r<0.5 ? 0.35:r<0.25?0.25:0})`;
-    const tm=Player.mode==='turret';
-    if(tm){
-      const t=Turrets.list[Player.turretIdx];
-      $('heat').style.display='block'; $('heatfill').style.width=(t.heat*100)+'%'; $('heatfill').style.background=t.over?'#ff3a2a':'#ffa830';
-      $('wName').textContent=`遥控机枪 #${Player.turretIdx+1}`; $('aMag').textContent=t.over?'过热':'∞'; $('aRes').textContent='';
-    } else {
-      $('heat').style.display='none';
-      const W=WEAPONS[Player.cur], o=Player.owned[Player.cur];
-      $('wName').textContent=W.name+(Player.reloading>0?' · 换弹中…':''); $('aMag').textContent=o.mag; $('aRes').textContent='/ '+(o.res===Infinity?'∞':o.res);
-    }
-    const sc=!tm && Player.aiming && WEAPONS[Player.cur].scope && camera.fov<30;
-    $('scope').style.display=sc?'block':'none'; $('cross').style.display=sc?'none':'block';
-    $('cross').classList.toggle('dot', !tm && Player.aiming && !sc);
-    const k=IS_TOUCH;
+    const gm=Player.mode==='gun', t=gm?Guns.list[Player.gunIdx]:Player.nearGun();
+    $('heat').style.display=gm?'block':'none';
+    if(gm && t){ $('heatfill').style.width=(t.heat*100)+'%'; $('heatfill').style.background=t.over?'#ff3a2a':'#ffa830'; $('heatLbl').textContent=t.over?'过热！等它冷却':'温度'; }
+    $('gunInfo').innerHTML = gm&&t ? `<div class="w">亲手操控</div><div class="n">${t.M.name} <small>Lv.${t.lvl}</small></div>`
+      : t ? `<div class="w">附近炮台</div><div class="n">${t.M.name} <small>Lv.${t.lvl}${t.gunner?' · 有炮手':' · 无人'}</small></div>` : `<div class="w">在墙上走动</div><div class="n" style="font-size:20px">选位置建炮台</div>`;
+    $('cross').className = gm ? '' : 'dot';
     let hint='';
-    if(Game.state==='prep') hint = k ? '点「商店」招募士兵、买武器 · 「开战」立即开始' : 'B 打开商店（招募 / 武器 / 城防） · N 立即开战 · F 遥控机枪';
-    else if(tm) hint = k ? '拖动瞄准 · 按住射击 · 再点「机枪」退出' : '鼠标瞄准 · 左键扫射 · 1-3 切换机枪 · F 退出';
-    else hint = k ? '「集火」：准星对准僵尸，全军集中攻击' : 'T 标记目标让士兵集火 · F 遥控机枪';
+    if(gm) hint=`瞄准 · ${K('左键','射击')}开火${t&&t.type==='cannon'?` · ${K('右键','瞄准')}放大`:''} · ${K('A/D','切换')}换炮台 · ${K('F','离开')}离开`;
+    else if(Build.isOpen) hint=IS_TOUCH?'点选要建造的炮台':'按 1-4 选择炮台 · Q 取消 · 可以边走边选位置';
+    else if(t) hint=`${K('F','操控')} 亲手操控 · ${t.gunner?'':`${K('G','派炮手')} 派炮手(💰${CREW.gunner.price}) · `}${t.lvl<3?`${K('U','升级')} 升级(💰${Guns.upPrice(t)}) · `:''}${K('X','拆除')} 拆除`;
+    else if(Guns.canBuildAt(Player.spotX())) hint=`${K('Q','建造')} 在这里建炮台 · ${K('F','操控')} 操控最近的炮台`;
+    else hint='离其他炮台太近，走开一点再建';
+    if(Game.state==='prep' && !gm) hint+= IS_TOUCH?'':' · B 商店 · N 开战';
     $('hint').textContent=hint;
-    const counts=Object.keys(UNITS).map(k=>[UNITS[k].name,Army.count(k)]).filter(a=>a[1]>0);
-    $('units').innerHTML = (counts.length? '守军：'+counts.map(a=>`${a[0]}×${a[1]}`).join('  ') : '守军：只有你') + `<br>机枪 ${Turrets.list.length} 台` + (Zombies.marked?'<br><span style="color:#ff6a5a">◆ 集火目标已标记</span>':'');
-    if(k){ $('tShop').style.display=Game.state==='prep'?'flex':'none'; $('tNext').style.display=Game.state==='prep'?'flex':'none'; $('tTurret').classList.toggle('on',tm); $('tAim').classList.toggle('on',Input.touchAim); }
+    const eng=Crew.engineers.length;
+    $('units').innerHTML=`炮台 ${Guns.list.length} 座 · 炮手 ${Crew.gunners()} · 工匠 ${eng}` + (Zombies.marked?'<br><span style="color:#ff6a5a">◆ 集火目标已标记</span>':'');
+    if(IS_TOUCH){
+      const show=(id,v)=>$(id).style.display=v?'flex':'none', prep=Game.state==='prep';
+      show('tFire',gm); show('tSw',gm); show('tAim',gm&&t&&t.type==='cannon');
+      $('tCtrl').textContent=gm?'离开':'操控';
+      show('tBuild',!gm && (Build.isOpen || (!t && Guns.canBuildAt(Player.spotX()))));
+      show('tCrew',!gm && t && !t.gunner); show('tUp',!gm && t && t.lvl<3); show('tDel',!gm && t);
+      show('tShop',prep && !gm); show('tStart',prep);
+      $('tAim').classList.toggle('on',Input.touchAim); $('tBuild').classList.toggle('on',Build.isOpen);
+    }
   },
   announce(big, small='', ms=2200){ const a=$('announce'); a.innerHTML=big+(small?`<small>${small}</small>`:''); a.style.opacity=1; clearTimeout(this.annT); this.annT=setTimeout(()=>a.style.opacity=0,ms); },
-  toast(s){ const a=$('toast'); a.textContent=s; a.style.opacity=1; clearTimeout(this.toastT); this.toastT=setTimeout(()=>a.style.opacity=0,1400); },
+  toast(s){ const a=$('toast'); a.textContent=s; a.style.opacity=1; clearTimeout(this.toastT); this.toastT=setTimeout(()=>a.style.opacity=0,1800); },
 };
 
 /* =====================================================================
-   13. 商店
+   13. 商店（波次之间）：城墙 / 工匠 / 炮手训练
    ===================================================================== */
 const Shop = {
-  open:false, tab:'weapon',
+  open:false,
   items(){
-    const L=[];
-    if(this.tab==='weapon'){
-      for(const k of WEAPON_ORDER){ const W=WEAPONS[k]; if(k==='pistol') continue;
-        if(!Player.owned[k]) L.push({ name:W.name, desc:`伤害 ${W.dmg}${W.pellets>1?'×'+W.pellets:''} · 弹匣 ${W.mag}${W.auto?' · 全自动':''}${W.pierce?' · 穿透 '+W.pierce:''}${W.scope?' · 右键开镜':''}`, price:W.price, act:'购买', buy:()=>{ Player.owned[k]={mag:W.mag,res:W.reserve}; Player.select(k); } });
-        else L.push({ name:W.name+' 弹药', desc:`+${W.ammoAmt} 发（当前备弹 ${Player.owned[k].res}）`, price:W.ammoPrice, act:'补充', buy:()=>{ Player.owned[k].res+=W.ammoAmt; } });
-      }
-    } else if(this.tab==='unit'){
-      for(const k in UNITS){ const U=UNITS[k]; const why=Army.canRecruit(k);
-        L.push({ name:`${U.name}（已有 ${Army.count(k)}）`, desc:U.desc+(U.dmg?` 伤害 ${U.dmg} · 射程 ${U.range}`:'')+' · 消耗 1 名村民', price:U.price, act:'招募', why, buy:()=>{ if(Army.recruit(k)) Game.pop--; } });
-      }
-    } else {
-      L.push({ name:'修补城墙', desc:`立即恢复 300 耐久（${Math.ceil(Wall.hp)} / ${Wall.max}）`, price:120, act:'修补', why:Wall.hp>=Wall.max?'城墙完好':null, buy:()=>Wall.repair(300) });
-      L.push({ name:`加固城墙 Lv.${Wall.lvl}`, desc:'耐久上限 +400，并回复 400', price:400+Wall.lvl*150, act:'加固', why:Wall.lvl>=6?'已满级':null, buy:()=>{ Wall.lvl++; Wall.max+=400; Wall.repair(400); } });
-      L.push({ name:`建造机枪（${Turrets.list.length} / ${TURRET_SLOTS.length}）`, desc:'墙头新增一台重机枪，可遥控或交给机枪手', price:600, act:'建造', why:Turrets.list.length>=TURRET_SLOTS.length?'位置已满':null, buy:()=>Turrets.build(TURRET_SLOTS[Turrets.list.length]) });
-      L.push({ name:`机枪升级 Lv.${Turrets.lvl}`, desc:`伤害 +30%，散热 +20%（当前伤害 ${Math.round(Turrets.dmg())}）`, price:400*(Turrets.lvl+1), act:'升级', why:Turrets.lvl>=4?'已满级':null, buy:()=>{ Turrets.lvl++; } });
-    }
-    return L;
+    return [
+      { name:'修补城墙', desc:`立即恢复 300 耐久（${Math.ceil(Wall.hp)} / ${Wall.max}）`, price:120, act:'修补', why:Wall.hp>=Wall.max?'城墙完好':null, buy:()=>Wall.repair(300) },
+      { name:`加固城墙 Lv.${Wall.lvl}`, desc:'耐久上限 +400，并回复 400', price:400+Wall.lvl*150, act:'加固', why:Wall.lvl>=6?'已满级':null, buy:()=>{ Wall.lvl++; Wall.max+=400; Wall.repair(400); } },
+      { name:`招募工匠（${Crew.engineers.length} / ${ENGINEER_SLOTS.length}）`, desc:`站在墙内侧，每秒修复城墙 ${CREW.engineer.repair} 点 · 消耗 1 名村民`, price:CREW.engineer.price, act:'招募',
+        why:Crew.engineers.length>=ENGINEER_SLOTS.length?'工匠已满':Game.pop<=0?'村民不足':null, buy:()=>Crew.hireEngineer() },
+      { name:`炮手训练 Lv.${Guns.crewLvl}`, desc:'所有炮手：转向更快、射得更准', price:300*(Guns.crewLvl+1), act:'训练', why:Guns.crewLvl>=3?'已满级':null, buy:()=>{ Guns.crewLvl++; } },
+    ];
   },
   render(){
     $('shopGold').textContent=Game.gold;
-    document.querySelectorAll('#tabs .btn').forEach(b=>b.classList.toggle('on',b.dataset.tab===this.tab));
     const box=$('items'); box.innerHTML='';
     for(const it of this.items()){
       const d=document.createElement('div'); d.className='item';
       const why=it.why || (Game.gold<it.price?'金币不足':null);
       d.innerHTML=`<h3>${it.name}</h3><p>${it.desc}</p>`;
       const b=document.createElement('span'); b.className='btn'+(why?' gray':''); b.textContent=why?why:`${it.act} · 💰${it.price}`;
-      b.onclick=()=>{ if(why){ Sfx.deny(); return; } Game.gold-=it.price; it.buy(); Sfx.buy(); this.render(); HUD.bar(); };
+      b.onclick=()=>{ if(why){ Sfx.deny(); return; } Game.gold-=it.price; it.buy(); Sfx.buy(); this.render(); };
       d.appendChild(b); box.appendChild(d);
     }
   },
   toggle(v){
     if(v && Game.state!=='prep'){ HUD.toast('商店只在波次之间开放'); return; }
     this.open=v; $('shop').classList.toggle('show',v);
-    if(v){ if(Player.mode==='turret') Player.exitTurret(); this.render(); if(document.pointerLockElement) document.exitPointerLock(); }
+    if(v){ if(Player.mode==='gun') Player.exitGun(); Build.close(); this.render(); if(document.pointerLockElement) document.exitPointerLock(); }
     else Game.lock();
   },
 };
-document.querySelectorAll('#tabs .btn').forEach(b=>b.onclick=()=>{ Shop.tab=b.dataset.tab; Shop.render(); });
 $('shopClose').onclick=()=>Shop.toggle(false);
 $('shopNext').onclick=()=>{ Shop.toggle(false); Game.startCombat(); };
 
@@ -984,8 +1012,8 @@ $('shopNext').onclick=()=>{ Shop.toggle(false); Game.startCombat(); };
 const Input = {
   keys:{}, mouse:{l:false,r:false}, sens:1, joy:{x:0,y:0,id:null}, lookId:null, lx:0, ly:0, touchFire:false, touchAim:false,
   state(){
-    const k=this.keys;
-    return { mx:(k.KeyD?1:0)-(k.KeyA?1:0)+this.joy.x, my:(k.KeyW?1:0)-(k.KeyS?1:0)-this.joy.y, sprint:!!(k.ShiftLeft||k.ShiftRight),
+    const k=this.keys, gun=Player.mode==='gun';
+    return { mx:gun?0:(k.KeyD?1:0)-(k.KeyA?1:0)+this.joy.x, my:gun?0:(k.KeyW?1:0)-(k.KeyS?1:0)-this.joy.y, sprint:!!(k.ShiftLeft||k.ShiftRight),
              fire:this.mouse.l||this.touchFire, aim:this.mouse.r||this.touchAim };
   },
 };
@@ -993,16 +1021,23 @@ addEventListener('keydown',e=>{
   if(Game.state==='title') return;
   Input.keys[e.code]=true;
   if(e.code==='Tab') e.preventDefault();
-  if(Game.state==='over'||Game.paused) return;
+  if(Game.state==='over'||Game.paused||e.repeat) return;
   if(e.code==='KeyB'){ Shop.toggle(!Shop.open); return; }
   if(Shop.open){ if(e.code==='KeyN'){ Shop.toggle(false); Game.startCombat(); } if(e.code==='Escape') Shop.toggle(false); return; }
   if(e.code==='KeyN' && Game.state==='prep') Game.startCombat();
-  if(e.code==='KeyF') Player.mode==='turret'?Player.exitTurret():Player.enterTurret();
+  if(e.code==='KeyF') Player.mode==='gun'?Player.exitGun():Player.enterGun();
   if(e.code==='KeyT') Game.mark();
-  if(e.code==='KeyR' && Player.mode==='walk') Player.reload();
-  if(/^Digit[1-4]$/.test(e.code)){ const n=+e.code[5];
-    if(Player.mode==='turret'){ if(n<=Turrets.list.length){ Player.turretIdx=n-1; HUD.bar(); } }
-    else { const id=WEAPON_ORDER.find(k=>WEAPONS[k].key===n); if(Player.owned[id]) Player.select(id); } }
+  if(Player.mode==='gun'){
+    if(e.code==='KeyA'||e.code==='ArrowLeft') Player.switchGun(-1);
+    if(e.code==='KeyD'||e.code==='ArrowRight') Player.switchGun(1);
+    if(e.code==='KeyE') Player.exitGun();
+    return;
+  }
+  if(e.code==='KeyQ') Build.toggle();
+  if(Build.isOpen && /^Digit[1-4]$/.test(e.code)){ const k=MOUNT_ORDER.find(k=>MOUNTS[k].key===+e.code[5]); if(k) Build.choose(k); return; }
+  if(e.code==='KeyG') Act.crew();
+  if(e.code==='KeyU') Act.upgrade();
+  if(e.code==='KeyX') Act.remove();
 });
 addEventListener('keyup',e=>{ Input.keys[e.code]=false; });
 addEventListener('mousemove',e=>{ if(document.pointerLockElement && Game.playing()) Player.look(e.movementX*0.0022*Input.sens, e.movementY*0.0022*Input.sens); });
@@ -1013,33 +1048,33 @@ renderer.domElement.addEventListener('mousedown',e=>{
 });
 addEventListener('mouseup',e=>{ if(e.button===0) Input.mouse.l=false; if(e.button===2) Input.mouse.r=false; });
 addEventListener('contextmenu',e=>e.preventDefault());
-addEventListener('wheel',e=>{ if(Game.playing() && Player.mode==='walk') Player.cycle(e.deltaY>0?1:-1); });
+addEventListener('wheel',e=>{ if(Game.playing() && Player.mode==='gun') Player.switchGun(e.deltaY>0?1:-1); });
 document.addEventListener('pointerlockchange',()=>{
   if(!document.pointerLockElement && Game.playing() && !Shop.open && !IS_TOUCH) Game.setPaused(true);
   Input.mouse.l=Input.mouse.r=false;
 });
 addEventListener('blur',()=>{ Input.keys={}; Input.mouse.l=Input.mouse.r=false; if(Game.playing() && !Shop.open) Game.setPaused(true); });
 
-// 触屏
 function setupTouch(){
   $('touch').style.display='block';
   const joy=$('joy'), knob=$('knob');
-  const jr=()=>joy.getBoundingClientRect();
-  joy.addEventListener('touchstart',e=>{ e.preventDefault(); const t=e.changedTouches[0]; Input.joy.id=t.identifier; moveJoy(t); },{passive:false});
-  const moveJoy=t=>{ const r=jr(), cx=r.left+r.width/2, cy=r.top+r.height/2; let dx=(t.clientX-cx)/(r.width/2), dy=(t.clientY-cy)/(r.height/2); const l=Math.hypot(dx,dy); if(l>1){dx/=l;dy/=l;}
+  const moveJoy=t=>{ const r=joy.getBoundingClientRect(), cx=r.left+r.width/2, cy=r.top+r.height/2; let dx=(t.clientX-cx)/(r.width/2), dy=(t.clientY-cy)/(r.height/2); const l=Math.hypot(dx,dy); if(l>1){dx/=l;dy/=l;}
     Input.joy.x=dx; Input.joy.y=dy; knob.style.transform=`translate(${dx*45}px,${dy*45}px)`; Input.keys.ShiftLeft=l>0.95; };
+  joy.addEventListener('touchstart',e=>{ e.preventDefault(); const t=e.changedTouches[0]; Input.joy.id=t.identifier; moveJoy(t); },{passive:false});
   const btn=(id,down,up)=>{ const b=$(id); b.addEventListener('touchstart',e=>{ e.preventDefault(); Sfx.init(); down(); },{passive:false}); if(up) b.addEventListener('touchend',e=>{ e.preventDefault(); up(); },{passive:false}); };
   btn('tFire',()=>Input.touchFire=true,()=>Input.touchFire=false);
   btn('tAim',()=>Input.touchAim=!Input.touchAim);
-  btn('tReload',()=>Player.reload());
-  btn('tTurret',()=>Player.mode==='turret'?Player.exitTurret():Player.enterTurret());
+  btn('tCtrl',()=>Player.mode==='gun'?Player.exitGun():Player.enterGun());
+  btn('tSw',()=>Player.switchGun(1));
+  btn('tBuild',()=>Build.toggle());
+  btn('tCrew',()=>Act.crew());
+  btn('tUp',()=>Act.upgrade());
+  btn('tDel',()=>Act.remove());
   btn('tMark',()=>Game.mark());
-  btn('tSwitch',()=>{ if(Player.mode==='turret'){ Player.turretIdx=(Player.turretIdx+1)%Turrets.list.length; HUD.bar(); } else Player.cycle(1); });
   btn('tShop',()=>Shop.toggle(true));
-  btn('tNext',()=>Game.startCombat());
+  btn('tStart',()=>Game.startCombat());
   btn('tPause',()=>Game.setPaused(true));
-  // 右半屏拖动视角（也允许按住射击键同时拖动：射击键上的手指不算视角）
-  addEventListener('touchstart',e=>{ for(const t of e.changedTouches){ if(t.target.closest && t.target.closest('.tb,#joy,.screen')) continue; if(t.clientX>innerWidth*0.35 && Input.lookId===null){ Input.lookId=t.identifier; Input.lx=t.clientX; Input.ly=t.clientY; } } },{passive:true});
+  addEventListener('touchstart',e=>{ for(const t of e.changedTouches){ if(t.target.closest && t.target.closest('.tb,#joy,.screen,#buildMenu')) continue; if(t.clientX>innerWidth*0.35 && Input.lookId===null){ Input.lookId=t.identifier; Input.lx=t.clientX; Input.ly=t.clientY; } } },{passive:true});
   addEventListener('touchmove',e=>{ for(const t of e.changedTouches){
     if(t.identifier===Input.joy.id) moveJoy(t);
     else if(t.identifier===Input.lookId){ if(Game.playing()) Player.look((t.clientX-Input.lx)*0.0042*Input.sens,(t.clientY-Input.ly)*0.0042*Input.sens); Input.lx=t.clientX; Input.ly=t.clientY; }
@@ -1056,8 +1091,8 @@ const Game = {
   playing(){ return (this.state==='prep'||this.state==='combat') && !this.paused && !Shop.open; },
   lock(){ if(IS_TOUCH) return; try{ const p=renderer.domElement.requestPointerLock(); if(p&&p.catch) p.catch(()=>{}); }catch(e){} },
   reset(){
-    Zombies.clear(); Army.clear(); Turrets.clear(); Wall.reset(); Player.reset();
-    Turrets.build(TURRET_SLOTS[0]);
+    Zombies.clear(); Crew.clear(); Guns.clear(); Rockets.clear(); Build.close(); Wall.reset(); Player.reset();
+    Guns.build('mg',START_GUN_X);
     this.wave=1; this.gold=CFG.startGold; this.pop=CFG.startPop; this.kills=0; this.queue=[]; Shop.open=false;
     $('shop').classList.remove('show'); $('over').classList.remove('show'); $('pause').classList.remove('show');
     HUD.bar(); this.startPrep(true);
@@ -1068,8 +1103,8 @@ const Game = {
     this.reset(); this.lock();
   },
   startPrep(first){
-    this.state='prep'; this.timer=first?45:CFG.prepTime;
-    HUD.announce(first?'守住城墙！':`第 ${this.wave-1} 波已击退`, first?'僵尸从野外过来了。先去商店（B）招募守军':'准备下一波 · 商店已开放');
+    this.state='prep'; this.timer=first?60:CFG.prepTime;
+    HUD.announce(first?'守住城墙！':`第 ${this.wave-1} 波已击退`, first?`沿着城墙选位置建炮台（${K('Q','建造')}），再派炮手操作（${K('G','派炮手')}）`:'继续加固防线');
   },
   startCombat(){
     if(this.state!=='prep') return;
@@ -1084,17 +1119,15 @@ const Game = {
   },
   remaining(){ return this.queue.length+Zombies.aliveCount(); },
   endCombat(){
-    const bonus=60+25*this.wave, refugees=this.wave%2===0?2:1;
+    const bonus=80+25*this.wave, refugees=this.wave%2===0?2:1;
     this.gold+=bonus; this.pop+=refugees; this.wave++;
     this.startPrep(false); HUD.toast(`清除奖励 +${bonus} 金 · ${refugees} 名难民加入村庄`);
   },
-  addGold(g){ this.gold+=g; },
+  addGold(g){ this.gold+=g; if(Build.isOpen) Build.render(); },
   hitmark(){ this.hitT=0.12; },
   mark(){
     const o=camera.position.clone(), d=new V3(); camera.getWorldDirection(d);
-    const hits=Zombies.raycast(o,d,300);
-    // 准星附近宽松判定
-    let z=hits[0]?.z;
+    let z=Zombies.raycast(o,d,300)[0]?.z;
     if(!z){ let best=0.06; for(const q of Zombies.list){ if(!q.alive) continue; const v=q.h.root.position.clone().add(new V3(0,q.s,0)).sub(o); const a=v.angleTo(d); if(a<best){ best=a; z=q; } } }
     if(z){ Zombies.marked=z; HUD.toast(`集火：${z.T.name}`); Sfx.tone(800,1200,0.12,0.1); } else HUD.toast('准星对准一只僵尸再下令');
   },
@@ -1103,7 +1136,7 @@ const Game = {
     this.paused=v; $('pause').classList.toggle('show',v); if(!v) this.lock();
   },
   gameOver(){
-    if(this.state==='over') return; this.state='over'; if(Player.mode==='turret') Player.exitTurret();
+    if(this.state==='over') return; this.state='over'; if(Player.mode==='gun') Player.exitGun(); Build.close();
     if(document.pointerLockElement) document.exitPointerLock();
     $('overTxt').innerHTML=`坚守到第 <b>${this.wave}</b> 波 · 击杀 <b>${this.kills}</b> 只僵尸`; setTimeout(()=>$('over').classList.add('show'),1200);
     HUD.announce('城墙被攻破！','',2500);
@@ -1116,9 +1149,8 @@ const Game = {
       if(this.queue.length && this.spawnT<=0 && Zombies.aliveCount()<70){ Zombies.spawn(this.queue.pop(),this.wave); this.spawnT=Math.max(0.25,1.5-this.wave*0.09)*rand(0.5,1.3); }
       if(!this.queue.length && Zombies.aliveCount()===0) this.endCombat();
     }
-    const inp=Input.state();
-    Player.update(dt,inp);
-    Turrets.update(dt); Army.update(dt); Zombies.update(dt); World.update(dt,this.time); Fx.update(dt);
+    Player.update(dt,Input.state());
+    Guns.update(dt); Crew.update(dt); Rockets.update(dt); Zombies.update(dt); World.update(dt,this.time); Fx.update(dt); Build.update();
     Wall.flash-=dt; this.hitT-=dt; $('cross').classList.toggle('hit',this.hitT>0);
     if(this.shake>0){ this.shake-=dt*0.5; camera.position.x+=rand(-1,1)*this.shake*0.5; camera.position.y+=rand(-1,1)*this.shake*0.5; }
     HUD.update();
@@ -1130,29 +1162,27 @@ $('restartBtn').onclick=()=>{ Game.setPaused(false); Game.reset(); };
 $('againBtn').onclick=()=>{ Game.reset(); Game.lock(); };
 $('sens').oninput=e=>Input.sens=+e.target.value;
 $('ctrlText').innerHTML = IS_TOUCH
-  ? '左下摇杆：在城墙上走动（推到底冲刺）<br>右半屏拖动：转视角 · 射击 / 瞄准 / 换弹 / 切枪<br>「机枪」：遥控墙上的重机枪扫射 · 「集火」：命令全军攻击准星目标<br>波次之间点「商店」招募士兵、买武器、修墙'
-  : 'WASD 在城墙上走动 · Shift 冲刺 · 鼠标瞄准 · 左键射击 · 右键瞄准 / 开镜 · R 换弹 · 1-4 切枪<br><b>F</b> 遥控重机枪扫射（1-3 切换机枪）· <b>T</b> 命令全军集火准星目标<br><b>B</b> 商店：招募民兵 / 狙击手 / 机枪手 / 工匠，买武器，修墙 · <b>N</b> 立即开战 · Esc 暂停';
+  ? '左下摇杆：在城墙上走动，选位置<br>「建造」架设炮台：重机枪 / 霰弹炮 / 火箭炮 / 反器材炮<br>走到炮台旁：「派炮手」让村民来操作，「升级」「拆除」<br>「操控」亲手开炮 · 「集火」命令所有炮手攻击准星目标'
+  : 'WASD 在城墙上走动 · 鼠标看 · 右键望远镜<br><b>Q</b> 在脚下的垛口建炮台：重机枪 / 霰弹炮 / 火箭炮 / 反器材炮<br>走到炮台旁：<b>G</b> 派炮手操作 · <b>U</b> 升级 · <b>X</b> 拆除<br><b>F</b> 亲手操控炮台（A/D 切换）· <b>T</b> 命令炮手集火 · <b>B</b> 商店 · <b>N</b> 开战 · Esc 暂停';
 
 /* =====================================================================
    16. 启动
    ===================================================================== */
-World.build(); Fx.init(); Zombies.init(); Player.buildView(); Player.reset(); Turrets.build(TURRET_SLOTS[0]);
-// 标题画面：镜头在城墙上俯瞰野外
-camera.position.set(-20,12,-6); camera.lookAt(10,3,60);
+World.build(); Fx.init(); Zombies.init(); Build.init(); Player.reset(); Guns.build('mg',START_GUN_X);
 addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); });
 let last=performance.now();
 function loop(now){
   requestAnimationFrame(loop);
   const dt=Math.min(0.05,(now-last)/1000); last=now;
   if(Game.state==='title'){ const t=now/1000; camera.position.set(Math.sin(t*0.05)*25,13,-8); camera.lookAt(Math.sin(t*0.05)*10,3,60); World.update(dt,t); }
-  else if(Game.state==='over'){ World.update(dt,Game.time); Zombies.update(dt); Fx.update(dt); }
+  else if(Game.state==='over'){ World.update(dt,Game.time); Zombies.update(dt); Rockets.update(dt); Fx.update(dt); }
   else if(!Game.paused && !Shop.open) Game.update(dt);
   else if(Shop.open){ Game.time+=dt; World.update(dt,Game.time); HUD.update(); }
   camera.userData.dome.position.copy(camera.position);
   renderer.render(scene,camera);
 }
 requestAnimationFrame(loop);
-window.CityDebug={ Game, Zombies, Wall, Player, Army, Turrets };
+window.CityDebug={ Game, Zombies, Wall, Player, Guns, Crew, Build };
 </script>
 </body>
 </html>
