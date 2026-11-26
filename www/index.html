@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<!--
+=====================================================================
+  末日之城 —— 方块风格 · 守城打僵尸（Three.js r128 单文件，浏览器直接打开）
+=====================================================================
+【玩法】站在城墙上行走射击；城内是村庄，城外是野外。僵尸从野外涌向城墙，啃城墙。
+  城墙耐久归零 = 城破，游戏结束。只需要守护这一面墙（两侧是悬崖）。
+【电脑操作】
+  点击画面 锁定鼠标 · WASD 移动 · Shift 冲刺 · 鼠标 视角 · 左键 射击 · 右键 瞄准（狙击枪开镜）
+  R 换弹 · 1-4 / 滚轮 切枪 · F 遥控机枪（再按 F 退出；遥控时 1-3 切换机枪）
+  T 命令：标记目标，所有士兵集火 · B 商店（波次之间）· N 立即开始下一波 · Esc 暂停
+【手机操作】左下摇杆移动 · 右半屏拖动视角 · 右下按钮：射击 / 瞄准 / 换弹 / 机枪 / 集火 / 切枪
+【打包 APK】本目录 www/ 可直接作为 Capacitor 的 webDir。
+-->
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<title>末日之城</title>
+<style>
+*{box-sizing:border-box;margin:0;padding:0;-webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+html,body{width:100%;height:100%;overflow:hidden;background:#000;font-family:"Microsoft YaHei","PingFang SC",system-ui,sans-serif;color:#fff;touch-action:none}
+#game canvas{display:block}
+.px{text-shadow:2px 2px 0 #000,-1px -1px 0 #000,1px -1px 0 #000,-1px 1px 0 #000}
+.panel{background:rgba(20,18,24,.82);border:3px solid #111;box-shadow:inset 0 0 0 2px #5a5048,0 4px 0 rgba(0,0,0,.4)}
+.btn{display:inline-block;padding:10px 22px;margin:6px;font-size:18px;font-weight:bold;color:#fff;cursor:pointer;background:#6b8f3a;border:3px solid #111;
+  box-shadow:inset -3px -4px 0 #4a6626,inset 3px 3px 0 #9bc25c;font-family:inherit}
+.btn:hover{filter:brightness(1.15)}.btn:active{transform:translateY(2px)}
+.btn.gray{background:#6a6670;box-shadow:inset -3px -4px 0 #4a4650,inset 3px 3px 0 #9a96a0}
+.btn.red{background:#a8432f;box-shadow:inset -3px -4px 0 #7a2a1c,inset 3px 3px 0 #d8664f}
+.btn[disabled]{opacity:.45;pointer-events:none}
+#hud{position:fixed;inset:0;pointer-events:none;display:none}
+#tl{position:absolute;left:14px;top:12px;font-size:15px;line-height:1.6}
+#tl .big{font-size:24px;font-weight:bold;color:#ffd75a}
+#wallbox{position:absolute;left:50%;top:12px;transform:translateX(-50%);width:min(440px,60vw);text-align:center}
+#wallbar{height:18px;background:#2a1a1a;border:3px solid #111;margin-top:3px;position:relative}
+#wallfill{height:100%;width:100%;background:linear-gradient(#b8b0a0,#7a7266);transition:width .15s}
+#wallfill.low{background:linear-gradient(#e0604a,#9a2a1a)}
+#walltxt{position:absolute;inset:0;font-size:12px;line-height:12px;font-weight:bold}
+#tr{position:absolute;right:14px;top:12px;text-align:right;font-size:18px;line-height:1.55}
+#tr b{color:#ffd75a}
+#units{position:absolute;left:14px;bottom:16px;font-size:13px;line-height:1.5;max-width:40vw}
+#cross{position:absolute;left:50%;top:50%;width:22px;height:22px;transform:translate(-50%,-50%)}
+#cross:before,#cross:after{content:"";position:absolute;background:#fff;box-shadow:0 0 0 1px #000}
+#cross:before{left:10px;top:0;width:2px;height:22px}#cross:after{top:10px;left:0;height:2px;width:22px}
+#cross.hit:before,#cross.hit:after{background:#ff4a3a}
+#cross.dot:before{left:9px;top:9px;width:4px;height:4px}#cross.dot:after{display:none}
+#scope{position:absolute;inset:0;display:none;background:radial-gradient(circle at 50% 50%,transparent 0,transparent 32vmin,#000 32.5vmin)}
+#scope:before{content:"";position:absolute;left:0;right:0;top:50%;height:1px;background:#000}
+#scope:after{content:"";position:absolute;top:0;bottom:0;left:50%;width:1px;background:#000}
+#ammo{position:absolute;right:16px;bottom:16px;text-align:right}
+#ammo .n{font-size:34px;font-weight:bold}#ammo .r{font-size:18px;color:#ccc}#ammo .w{font-size:15px;color:#ffd75a}
+#heat{position:absolute;left:50%;bottom:110px;transform:translateX(-50%);width:240px;display:none;text-align:center;font-size:13px}
+#heatbar{height:12px;border:3px solid #111;background:#222;margin-top:3px}#heatfill{height:100%;width:0;background:#ffa830}
+#bar{position:absolute;left:50%;bottom:14px;transform:translateX(-50%);display:flex;gap:4px}
+.slot{width:62px;height:48px;border:3px solid #111;background:rgba(30,30,36,.75);font-size:12px;text-align:center;padding-top:4px;position:relative}
+.slot.cur{border-color:#ffd75a;transform:scale(1.08)}.slot.off{opacity:.3}
+.slot i{position:absolute;left:3px;top:1px;font-style:normal;font-size:10px;color:#aaa}
+#hint{position:absolute;left:50%;bottom:76px;transform:translateX(-50%);font-size:15px;white-space:nowrap;color:#e8e0c8}
+#announce{position:absolute;left:50%;top:26%;transform:translateX(-50%);font-size:44px;font-weight:bold;color:#ffd75a;opacity:0;transition:opacity .4s;white-space:nowrap;text-align:center}
+#announce small{display:block;font-size:18px;color:#fff}
+#toast{position:absolute;left:50%;top:38%;transform:translateX(-50%);font-size:18px;color:#ff9a7a;opacity:0;transition:opacity .3s}
+#vign{position:absolute;inset:0;pointer-events:none;box-shadow:inset 0 0 160px rgba(200,0,0,0);transition:box-shadow .3s}
+.screen{position:fixed;inset:0;display:none;align-items:center;justify-content:center;flex-direction:column;background:rgba(0,0,0,.55);z-index:20;text-align:center}
+.screen.show{display:flex}
+#title{background:linear-gradient(rgba(10,8,20,.35),rgba(10,8,20,.8))}
+#title h1{font-size:72px;letter-spacing:8px;color:#ffb840;text-shadow:4px 4px 0 #6a2a10,8px 8px 0 #000}
+#title p.sub{font-size:18px;margin:10px 0 26px;color:#e8d8b8}
+.ctrls{font-size:14px;line-height:1.8;color:#ddd;margin-top:18px;max-width:640px;padding:12px 18px}
+#shop .panel{width:min(820px,94vw);max-height:88vh;display:flex;flex-direction:column;padding:14px}
+#shop h2{font-size:26px;color:#ffd75a}
+#tabs{margin:8px 0}
+#tabs .btn{padding:6px 16px;font-size:16px}
+#tabs .btn.on{background:#c9a23a;box-shadow:inset -3px -4px 0 #8a6a1a,inset 3px 3px 0 #f0d070}
+#items{overflow-y:auto;flex:1;display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:8px;padding:4px;pointer-events:auto}
+.item{background:rgba(255,255,255,.06);border:2px solid #333;padding:10px;text-align:left;display:flex;flex-direction:column;gap:4px}
+.item h3{font-size:17px}.item p{font-size:13px;color:#bbb;flex:1}
+.item .btn{margin:4px 0 0;padding:6px 10px;font-size:15px;text-align:center}
+#over h1{font-size:60px;color:#ff5a3a}
+#touch{position:fixed;inset:0;display:none;z-index:5;pointer-events:none}
+#joy{position:absolute;left:5vw;bottom:6vh;width:150px;height:150px;border-radius:50%;background:rgba(255,255,255,.12);border:3px solid rgba(255,255,255,.3);pointer-events:auto}
+#knob{position:absolute;left:50%;top:50%;width:64px;height:64px;margin:-32px;border-radius:50%;background:rgba(255,255,255,.4)}
+.tb{position:absolute;width:70px;height:70px;border-radius:50%;background:rgba(30,30,30,.55);border:3px solid rgba(255,255,255,.45);pointer-events:auto;
+  display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:bold}
+.tb.on{background:rgba(200,160,40,.7)}
+#tFire{right:4vw;bottom:8vh;width:96px;height:96px;background:rgba(170,50,40,.6);font-size:18px}
+#tAim{right:calc(4vw + 108px);bottom:5vh}#tReload{right:calc(4vw + 10px);bottom:calc(8vh + 108px)}
+#tTurret{right:calc(4vw + 100px);bottom:calc(8vh + 90px)}#tMark{right:calc(4vw + 190px);bottom:calc(5vh + 30px)}
+#tSwitch{right:calc(4vw + 100px);bottom:calc(8vh + 172px)}
+#tShop{right:14px;top:110px;width:60px;height:60px;font-size:13px}#tPause{right:14px;top:180px;width:60px;height:60px;font-size:13px}
+#tNext{right:14px;top:250px;width:60px;height:60px;font-size:12px}
+#loaderr{position:fixed;inset:0;display:none;align-items:center;justify-content:center;background:#000;z-index:99;padding:30px;text-align:center}
+</style>
+</head>
+<body>
+<div id="game"></div>
+
+<div id="hud">
+  <div id="tl" class="px"><div class="big" id="waveTxt">第 1 波</div><div id="phaseTxt"></div><div id="killTxt"></div></div>
+  <div id="wallbox" class="px">城墙<div id="wallbar"><div id="wallfill"></div><div id="walltxt"></div></div></div>
+  <div id="tr" class="px"><div>💰 <b id="gold">0</b></div><div>👥 村民 <b id="pop">0</b></div></div>
+  <div id="units" class="px"></div>
+  <div id="scope"></div>
+  <div id="cross"></div>
+  <div id="heat" class="px">机枪温度<div id="heatbar"><div id="heatfill"></div></div></div>
+  <div id="hint" class="px"></div>
+  <div id="bar"></div>
+  <div id="ammo" class="px"><div class="w" id="wName"></div><span class="n" id="aMag">0</span> <span class="r" id="aRes">/ 0</span></div>
+  <div id="announce" class="px"></div>
+  <div id="toast" class="px"></div>
+  <div id="vign"></div>
+</div>
+
+<div id="touch">
+  <div id="joy"><div id="knob"></div></div>
+  <div class="tb" id="tFire">射击</div>
+  <div class="tb" id="tAim">瞄准</div>
+  <div class="tb" id="tReload">换弹</div>
+  <div class="tb" id="tTurret">机枪</div>
+  <div class="tb" id="tMark">集火</div>
+  <div class="tb" id="tSwitch">切枪</div>
+  <div class="tb" id="tShop">商店</div>
+  <div class="tb" id="tPause">暂停</div>
+  <div class="tb" id="tNext">开战</div>
+</div>
+
+<div class="screen show" id="title">
+  <h1 class="px">末日之城</h1>
+  <p class="sub px">守住城墙，身后就是村庄</p>
+  <div><span class="btn" id="startBtn">开始游戏</span></div>
+  <div class="ctrls panel" id="ctrlText"></div>
+</div>
+
+<div class="screen" id="pause">
+  <h1 class="px" style="font-size:48px">暂停</h1>
+  <div style="margin:16px 0" class="px">灵敏度 <input type="range" id="sens" min="0.3" max="3" step="0.1" value="1" style="pointer-events:auto;vertical-align:middle"></div>
+  <div><span class="btn" id="resumeBtn">继续</span><span class="btn gray" id="restartBtn">重新开始</span></div>
+</div>
+
+<div class="screen" id="shop">
+  <div class="panel">
+    <h2 class="px">补给站 · 💰 <span id="shopGold">0</span></h2>
+    <div id="tabs"><span class="btn on" data-tab="weapon">武器</span><span class="btn" data-tab="unit">招募</span><span class="btn" data-tab="def">城防</span></div>
+    <div id="items"></div>
+    <div style="margin-top:10px"><span class="btn gray" id="shopClose">关闭 (B)</span><span class="btn red" id="shopNext">开始下一波 (N)</span></div>
+  </div>
+</div>
+
+<div class="screen" id="over">
+  <h1 class="px">城破了</h1>
+  <p class="px" id="overTxt" style="font-size:20px;margin:14px 0 22px"></p>
+  <span class="btn" id="againBtn">再来一次</span>
+</div>
+
+<div id="loaderr"><div>Three.js 加载失败：请把 three.min.js (r128) 放在本文件同目录后刷新。</div></div>
+
+<script src="three.min.js"></script>
+<script>window.THREE || document.write('<script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"><\/script>');</script>
+<script>
+'use strict';
+if(!window.THREE){ document.getElementById('loaderr').style.display='flex'; throw new Error('no three'); }
+
+/* =====================================================================
+   0. 工具 & 配置
+   ===================================================================== */
+const $ = id => document.getElementById(id);
+const V3 = THREE.Vector3;
+const rand = (a,b) => a + Math.random()*(b-a), clamp = (v,a,b) => v<a?a:v>b?b:v, lerp = (a,b,t) => a+(b-a)*t;
+const IS_TOUCH = matchMedia('(pointer:coarse)').matches || ('ontouchstart' in window && navigator.maxTouchPoints > 0);
+const SHADOWS = !IS_TOUCH;
+
+const CFG = {
+  wall: { half:44, top:6, front:2, hp:2000 },          // 城墙：x -44..44，顶面 y=6，正面 z=2
+  walk: { x:42.5, zMin:-1.6, zMax:1.15, eye:1.65, speed:5, sprint:8.5 },
+  spawnZ: [108, 126],
+  prepTime: 30,
+  startGold: 400,
+  startPop: 12,
+};
+const WEAPONS = {
+  pistol:  { name:'手枪',   key:1, dmg:34,  rate:0.25, mag:12, reserve:Infinity, reload:1.1, spread:0.010, pellets:1, auto:false, range:140, price:0 },
+  rifle:   { name:'步枪',   key:2, dmg:38,  rate:0.10, mag:30, reserve:120, reload:1.8, spread:0.018, pellets:1, auto:true,  range:160, price:500, ammoPrice:60, ammoAmt:90 },
+  shotgun: { name:'霰弹枪', key:3, dmg:16,  rate:0.75, mag:6,  reserve:30,  reload:2.2, spread:0.075, pellets:9, auto:false, range:45,  price:400, ammoPrice:50, ammoAmt:18 },
+  sniper:  { name:'狙击枪', key:4, dmg:220, rate:1.1,  mag:5,  reserve:20,  reload:2.5, spread:0.002, pellets:1, auto:false, range:300, price:900, ammoPrice:80, ammoAmt:10, pierce:3, scope:true },
+};
+const WEAPON_ORDER = ['pistol','rifle','shotgun','sniper'];
+const ZTYPES = {
+  walker: { name:'行尸',   hp:80,  speed:1.5, dps:4,  gold:10, s:1.0,  c:{ skin:0x6f9e4a, shirt:0x3d6e8c, pants:0x34345a, eye:0xffd23a, hair:0x2a3a1a } },
+  runner: { name:'疾行者', hp:50,  speed:3.8, dps:3,  gold:14, s:0.92, c:{ skin:0x93b85a, shirt:0x9a3b34, pants:0x4a3a2a, eye:0xff6a2a } },
+  brute:  { name:'巨尸',   hp:650, speed:0.9, dps:18, gold:70, s:1.75, c:{ skin:0x4f7a34, shirt:0x5a4a3a, pants:0x2a2a3a, eye:0xff3030, hair:0x1a1a1a } },
+};
+const UNITS = {
+  militia:  { name:'民兵',   price:150, dmg:34,  rate:0.9, acc:0.7, range:75,  desc:'步枪射手，便宜可靠。', c:{ skin:0xd8a878, shirt:0x7a6a42, pants:0x4a4038, hair:0x5a6a3a } },
+  sniper:   { name:'狙击手', price:400, dmg:170, rate:2.2, acc:0.88, range:140, desc:'远程高伤害，优先打大家伙。', c:{ skin:0xc89868, shirt:0x3a4a30, pants:0x2a3424, hair:0x2a3020 } },
+  gunner:   { name:'机枪手', price:350, desc:'自动操作一台空闲机枪（需要有机枪）。', c:{ skin:0xd0a070, shirt:0x4a5a6a, pants:0x2a3038, hair:0x3a4048 } },
+  engineer: { name:'工匠',   price:250, repair:5, desc:'每秒修复城墙 5 点（最多 4 名）。', c:{ skin:0xe0b088, shirt:0xb86a2a, pants:0x4a3a2a, hair:0xd8b030 } },
+};
+const SOLDIER_SLOTS = [-38,-33,-28,-17,-12,-7,7,12,17,28,33,38];
+const TURRET_SLOTS = [0,-22,22];
+const ENGINEER_SLOTS = [-30,-10,10,30];
+
+/* =====================================================================
+   1. 音效（WebAudio 合成）
+   ===================================================================== */
+const Sfx = {
+  ctx:null, master:null, nb:null, last:{},
+  init(){
+    if(this.ctx) { if(this.ctx.state==='suspended') this.ctx.resume(); return; }
+    try{
+      this.ctx = new (window.AudioContext||window.webkitAudioContext)();
+      this.master = this.ctx.createGain(); this.master.gain.value = 0.45; this.master.connect(this.ctx.destination);
+      const n = this.ctx.sampleRate; this.nb = this.ctx.createBuffer(1, n, n); const d = this.nb.getChannelData(0); for(let i=0;i<n;i++) d[i]=Math.random()*2-1;
+    }catch(e){ this.ctx=null; }
+  },
+  noise(dur, f, vol, type='lowpass', q=0.8){
+    if(!this.ctx) return; const c=this.ctx, t=c.currentTime;
+    const s=c.createBufferSource(); s.buffer=this.nb; const fl=c.createBiquadFilter(); fl.type=type; fl.frequency.value=f; fl.Q.value=q;
+    const g=c.createGain(); g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    s.connect(fl); fl.connect(g); g.connect(this.master); s.start(t, Math.random()*0.5); s.stop(t+dur+0.02);
+  },
+  tone(f1, f2, dur, vol, type='square'){
+    if(!this.ctx) return; const c=this.ctx, t=c.currentTime;
+    const o=c.createOscillator(); o.type=type; o.frequency.setValueAtTime(f1,t); o.frequency.exponentialRampToValueAtTime(Math.max(20,f2),t+dur);
+    const g=c.createGain(); g.gain.setValueAtTime(vol,t); g.gain.exponentialRampToValueAtTime(0.001,t+dur);
+    o.connect(g); g.connect(this.master); o.start(t); o.stop(t+dur+0.02);
+  },
+  throttle(k, gap){ const n=performance.now(); if(this.last[k] && n-this.last[k]<gap) return false; this.last[k]=n; return true; },
+  shot(id){
+    if(id==='pistol'){ this.noise(0.12,2200,0.5); this.tone(180,60,0.08,0.15); }
+    else if(id==='rifle'){ this.noise(0.1,2600,0.45); this.tone(160,50,0.07,0.15); }
+    else if(id==='shotgun'){ this.noise(0.3,1200,0.8); this.tone(110,40,0.18,0.25); }
+    else if(id==='sniper'){ this.noise(0.5,1800,0.9); this.tone(90,30,0.3,0.3); }
+    else if(id==='mg'){ this.noise(0.08,1600,0.4); this.tone(120,50,0.05,0.12); }
+    else if(id==='unit'){ if(this.throttle('unit',60)) this.noise(0.09,1400,0.12); }
+  },
+  hit(){ if(this.throttle('hit',40)) this.noise(0.06,900,0.25,'bandpass',2); },
+  kill(){ this.tone(300,80,0.15,0.08,'sawtooth'); },
+  reload(){ this.tone(900,700,0.05,0.08); setTimeout(()=>this.tone(600,900,0.06,0.08),350); },
+  empty(){ this.tone(1200,1100,0.03,0.08); },
+  wallHit(){ if(this.throttle('wall',220)) { this.noise(0.15,300,0.35); this.tone(70,40,0.12,0.15,'sine'); } },
+  groan(){ if(!this.ctx) return; this.tone(rand(90,140),rand(50,70),rand(0.6,1.1),0.05,'sawtooth'); },
+  buy(){ this.tone(600,900,0.08,0.1); setTimeout(()=>this.tone(900,1300,0.1,0.1),80); },
+  deny(){ this.tone(200,150,0.15,0.12); },
+  horn(){ this.tone(220,200,1.2,0.18,'sawtooth'); setTimeout(()=>this.tone(165,150,1.4,0.18,'sawtooth'),300); },
+  overheat(){ this.noise(0.6,4000,0.3,'highpass'); },
+};
+
+/* =====================================================================
+   2. 纹理 & 材质（方块像素风，与 Blockade 一致）
+   ===================================================================== */
+function makeTex(w, h, draw){
+  const c=document.createElement('canvas'); c.width=w; c.height=h; draw(c.getContext('2d'),w,h);
+  const t=new THREE.CanvasTexture(c); t.magFilter=THREE.NearestFilter; t.minFilter=THREE.LinearMipmapLinearFilter;
+  t.wrapS=t.wrapT=THREE.RepeatWrapping; return t;
+}
+function pset(g,x,y,r,gg,b){ g.fillStyle=`rgb(${r|0},${gg|0},${b|0})`; g.fillRect(x,y,1,1); }
+function edgeShade(g,w,h,a){ g.fillStyle=`rgba(0,0,0,${a})`; g.fillRect(0,0,w,1); g.fillRect(0,h-1,w,1); g.fillRect(0,0,1,h); g.fillRect(w-1,0,1,h);
+  g.fillStyle=`rgba(255,255,255,${a*0.45})`; g.fillRect(1,1,w-2,1); g.fillRect(1,1,1,h-2); }
+const BLOCK_TEX = makeTex(8,8,g=>{ for(let x=0;x<8;x++) for(let y=0;y<8;y++){ const k=218+Math.random()*37; pset(g,x,y,k,k,k);} edgeShade(g,8,8,0.3); });
+const STONE_TEX = makeTex(32,32,g=>{   // 石砖：两排砖，错缝
+  for(let y=0;y<32;y++) for(let x=0;x<32;x++){ const k=200+Math.random()*45; pset(g,x,y,k,k,k*0.97); }
+  g.fillStyle='rgba(40,35,30,.55)';
+  for(let r=0;r<2;r++){ const y0=r*16; g.fillRect(0,y0,32,1); const off=r?8:0; g.fillRect((off)%32,y0,1,16); g.fillRect((off+16)%32,y0,1,16); }
+  g.fillStyle='rgba(255,255,255,.12)'; for(let r=0;r<2;r++) g.fillRect(0,r*16+1,32,1);
+});
+const glowMat = c => new THREE.MeshBasicMaterial({ color:c });
+const BLOCK_MAT = new THREE.MeshLambertMaterial({ map:BLOCK_TEX, vertexColors:true });
+const STONE_MAT = new THREE.MeshLambertMaterial({ map:STONE_TEX, vertexColors:true });
+const GLOW_MAT  = new THREE.MeshBasicMaterial({ vertexColors:true });
+const CHAR_MAT  = new THREE.MeshLambertMaterial({ map:BLOCK_TEX, vertexColors:true });
+
+// 一组方块 [w,h,d,color,x,y,z] → 一个带顶点色的几何体（1 次绘制）。tile>0 时 UV 按世界尺寸平铺（每 tile 米重复一次贴图）
+function mergeBoxes(list, tile=0){
+  const pos=[],nor=[],uv=[],col=[],idx=[],c=new THREE.Color(); let off=0;
+  for(const [w,h,d,hex,x,y,z] of list){
+    const g=new THREE.BoxGeometry(w,h,d); g.translate(x,y,z); c.setHex(hex);
+    const p=g.attributes.position,n=g.attributes.normal,u=g.attributes.uv;
+    const dims=[[d,h],[d,h],[w,d],[w,d],[w,h],[w,h]];
+    for(let i=0;i<p.count;i++){
+      pos.push(p.getX(i),p.getY(i),p.getZ(i)); nor.push(n.getX(i),n.getY(i),n.getZ(i));
+      if(tile>0){ const f=dims[(i/4)|0]; uv.push(u.getX(i)*f[0]/tile, u.getY(i)*f[1]/tile); } else uv.push(u.getX(i),u.getY(i));
+      const sh = 0.94+Math.random()*0.0; col.push(c.r*sh,c.g*sh,c.b*sh);
+    }
+    for(const i of g.index.array) idx.push(i+off); off+=p.count; g.dispose();
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); geo.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
+  geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2)); geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  geo.setIndex(idx); geo.computeBoundingSphere(); return geo;
+}
+const varyCol = (hex, v=0.08) => { const c=new THREE.Color(hex), k=1-Math.random()*v; return c.setRGB(c.r*k,c.g*k,c.b*k).getHex(); };
+
+/* =====================================================================
+   3. 渲染器 / 场景 / 灯光（黄昏）
+   ===================================================================== */
+const renderer = new THREE.WebGLRenderer({ antialias:!IS_TOUCH, powerPreference:'high-performance' });
+renderer.setPixelRatio(Math.min(devicePixelRatio, IS_TOUCH?1.5:2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.shadowMap.enabled = SHADOWS; renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+$('game').appendChild(renderer.domElement);
+const scene = new THREE.Scene();
+const FOG_COL = 0x5a4458;
+scene.fog = new THREE.Fog(FOG_COL, 45, 185);
+scene.background = new THREE.Color(FOG_COL);
+const camera = new THREE.PerspectiveCamera(72, innerWidth/innerHeight, 0.05, 600);
+scene.add(camera);
+
+scene.add(new THREE.HemisphereLight(0x8a90c8, 0x3a2a24, 0.75));
+scene.add(new THREE.AmbientLight(0x403040, 0.35));
+const sun = new THREE.DirectionalLight(0xffb27a, 0.95);
+sun.position.set(40, 45, 160); sun.target.position.set(0,0,20); scene.add(sun, sun.target);
+if(SHADOWS){
+  sun.castShadow = true; sun.shadow.mapSize.set(2048,2048);
+  const sc=sun.shadow.camera; sc.left=-60; sc.right=60; sc.top=70; sc.bottom=-70; sc.near=10; sc.far=320; sun.shadow.bias=-0.0008;
+}
+
+// 天空穹顶：顶点色渐变 + 落日 + 星星
+(function sky(){
+  const g=new THREE.SphereGeometry(400,32,16), p=g.attributes.position, cols=[], c=new THREE.Color();
+  const H=new THREE.Color(0xe8834a), M=new THREE.Color(0x6a3e6a), T=new THREE.Color(0x141a3a), B=new THREE.Color(FOG_COL);
+  for(let i=0;i<p.count;i++){
+    const y=p.getY(i)/400, z=p.getZ(i)/400;
+    const warm = clamp(0.5+z*0.5,0,1);                       // 太阳一侧（+z）更暖
+    if(y<0) c.copy(B);
+    else if(y<0.22){ c.copy(new THREE.Color(FOG_COL).lerp(H, warm)).lerp(M, y/0.22*0.8); }
+    else c.copy(M).lerp(T, clamp((y-0.22)/0.6,0,1));
+    cols.push(c.r,c.g,c.b);
+  }
+  g.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
+  const dome=new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide,fog:false,depthWrite:false}));
+  dome.renderOrder=-10; scene.add(dome); camera.userData.dome=dome;
+  const sunM=new THREE.Mesh(new THREE.BoxGeometry(34,34,2),new THREE.MeshBasicMaterial({color:0xffc070,fog:false}));
+  sunM.position.set(70,30,380); sunM.lookAt(0,0,0); dome.add(sunM);
+  const halo=new THREE.Mesh(new THREE.BoxGeometry(50,50,1),new THREE.MeshBasicMaterial({color:0xffa060,fog:false,transparent:true,opacity:0.25}));
+  halo.position.set(70,30,382); halo.lookAt(0,0,0); dome.add(halo);
+  const sp=[]; for(let i=0;i<300;i++){ const a=Math.random()*Math.PI*2, e=rand(0.3,1.4); sp.push(Math.cos(a)*Math.cos(e)*390, Math.sin(e)*390, Math.sin(a)*Math.cos(e)*390); }
+  const sg=new THREE.BufferGeometry(); sg.setAttribute('position',new THREE.Float32BufferAttribute(sp,3));
+  dome.add(new THREE.Points(sg,new THREE.PointsMaterial({color:0xffffff,size:1.6,sizeAttenuation:false,fog:false,transparent:true,opacity:0.7})));
+})();
+
+/* =====================================================================
+   4. 世界：城墙 / 野外 / 村庄 / 两侧悬崖
+   ===================================================================== */
+const World = {
+  torches:[], villagers:[], wallFront:null,
+  build(){
+    const S=[], B=[], G=[];   // 石砖 / 方块 / 发光
+    const W=CFG.wall, top=W.top;
+    // --- 地面（整块草地 + 花斑） ---
+    B.push([150,0.4,240,0x5d7d3c,0,-0.2,30]);
+    for(let i=0;i<70;i++){ const x=rand(-48,48), z=rand(-75,145), s=rand(2,7); B.push([s,0.42,s*rand(0.6,1.4),varyCol(0x587a36,0.18),x,-0.19,z]); }
+    // 野外土路 & 弹坑
+    B.push([5,0.44,145,0x7a5a3a,0,-0.18,74]);
+    for(let i=0;i<14;i++){ B.push([rand(2,4),0.45,rand(2,4),0x5a4430,rand(-38,38),-0.17,rand(10,120)]); }
+    // 村庄道路 & 广场
+    B.push([5,0.44,70,0x8a6a48,0,-0.18,-40]); B.push([70,0.44,4,0x8a6a48,0,-0.18,-20]); B.push([14,0.45,14,0x9a8a70,0,-0.17,-38]);
+
+    // --- 城墙 ---
+    S.push([W.half*2,top,4,0xb0a898,0,top/2,0]);                    // 墙体
+    S.push([W.half*2,0.55,0.6,0xa09888,0,top+0.275,1.7]);              // 外沿矮墙
+    for(let x=-W.half+1.2; x<W.half; x+=2.4){
+      if(TURRET_SLOTS.some(t=>Math.abs(t-x)<1.6)) continue;
+      S.push([1.2,0.5,0.6,0xb8b0a0,x,top+0.8,1.7]);               // 垛口
+    }
+    S.push([W.half*2,0.5,0.5,0x9a9284,0,0.25,2.2]);                // 墙脚
+    for(let x=-W.half+4; x<W.half; x+=8) S.push([1.2,top,0.6,0xa49c8c,x,top/2,2.2]);   // 扶壁
+    B.push([W.half*2,0.12,3.6,0x7a6a58,0,top+0.06,-0.1]);          // 走道木板
+    B.push([W.half*2,0.12,0.14,0x5a4028,0,top+1.0,-1.9]);          // 内侧护栏
+    for(let x=-W.half; x<=W.half; x+=3) B.push([0.14,1.0,0.14,0x5a4028,x,top+0.5,-1.9]);
+    // 两端塔楼
+    for(const sx of [-1,1]){
+      const tx=sx*(W.half+4);
+      S.push([8,top+5,8,0xa8a090,tx,(top+5)/2,0]);
+      for(let i=0;i<4;i++) for(const [dx,dz] of [[-3.4+i*2.27,-3.6],[-3.4+i*2.27,3.6],[-3.6,-3.4+i*2.27],[3.6,-3.4+i*2.27]]) S.push([0.9,1,0.9,0xb8b0a0,tx+dx,top+5.5,dz]);
+      B.push([1.6,2.4,0.2,0x3a2a1a,tx-sx*4.05,top+1.2,0]);  // 塔门
+      G.push([0.6,0.9,0.1,0xffc860,tx,top+2.8,-4.06]);
+    }
+    // 登墙阶梯（村庄一侧）
+    for(const sx of [-36,36]) for(let i=0;i<12;i++){ const h=(i+1)*0.5; S.push([2.4,h,0.5,0xa09888,sx,h/2,-2.25-(11-i)*0.5]); }
+    // 墙头火把（点光源少量）
+    for(const x of [-30,-10,10,30]){
+      B.push([0.15,0.8,0.15,0x4a3018,x,top+0.5,-1.75]); G.push([0.25,0.3,0.25,0xffb030,x,top+1.05,-1.75]);
+      const L=new THREE.PointLight(0xff9a40,1.1,16,2); L.position.set(x,top+1.5,-1.2); scene.add(L); this.torches.push(L);
+    }
+
+    // --- 两侧悬崖（把战场围成一条通道） ---
+    for(const sx of [-1,1]) for(let z=-80; z<150; z+=3){
+      const h=rand(9,20)+(z>-4&&z<6?6:0);
+      B.push([rand(6,10),h,3.2,varyCol(0x6a6258,0.2),sx*rand(52,55),h/2,z]);
+      if(Math.random()<0.4) B.push([3,0.6,3.2,0x5d7d3c,sx*rand(48,50),h*0.4,z]);
+    }
+    for(let x=-50;x<=50;x+=3){ const h=rand(12,22); B.push([3.2,h,6,varyCol(0x6a6258,0.2),x,h/2,-82]); }
+
+    // --- 野外：树、石头、枯木、破栅栏、车残骸 ---
+    const freeOf = (x,z)=>Math.abs(x)>3.5;
+    for(let i=0;i<55;i++){
+      const x=rand(-46,46), z=rand(18,150); if(!freeOf(x,z)) continue;
+      if(Math.random()<0.7){ const h=rand(2.5,5); B.push([0.7,h,0.7,0x5a3e24,x,h/2,z]);
+        const lc=varyCol(Math.random()<0.5?0x3e6a2a:0x4a5a26,0.2); B.push([rand(3,4.4),2.2,rand(3,4.4),lc,x,h+0.6,z]); B.push([rand(2,2.8),1.4,rand(2,2.8),lc,x,h+2.2,z]); }
+      else { const h=rand(2,4); B.push([0.5,h,0.5,0x4a3a2a,x,h/2,z]); B.push([1.6,0.35,0.35,0x4a3a2a,x+0.6,h*0.7,z]); }
+    }
+    for(let i=0;i<40;i++){ const x=rand(-46,46), z=rand(12,150), s=rand(0.6,2); if(freeOf(x,z)) B.push([s,s*0.7,s*rand(0.8,1.3),varyCol(0x7a7670,0.25),x,s*0.35,z]); }
+    for(let z=30; z<120; z+=rand(14,26)){ const x=rand(-34,-6)*(Math.random()<0.5?1:-1); for(let k=0;k<rand(3,6);k++){ if(Math.random()<0.3) continue; B.push([0.18,1.1,0.18,0x6a4a2a,x+k*1.6,0.55,z]); B.push([1.6,0.15,0.1,0x6a4a2a,x+k*1.6+0.8,0.8,z]); } }
+    for(const [x,z,c] of [[-18,46,0x8a3a2a],[24,78,0x3a5a7a]]){   // 废弃汽车
+      B.push([2,1,4,c,x,0.6,z]); B.push([1.8,0.7,2,c,x,1.4,z-0.2]); B.push([1.7,0.5,1.9,0x2a3038,x,1.45,z-0.2]);
+      for(const [dx,dz] of [[-1,-1.3],[1,-1.3],[-1,1.3],[1,1.3]]) B.push([0.3,0.7,0.7,0x1a1a1a,x+dx,0.35,z+dz]);
+    }
+
+    // --- 村庄 ---
+    const houses=[];
+    for(const hx of [-34,-22,22,34]) for(const hz of [-12,-26,-40,-54,-68]){
+      if(Math.random()<0.18) continue;
+      houses.push([hx+rand(-2,2), hz+rand(-1.5,1.5)]);
+    }
+    houses.push([-10,-58],[10,-58],[-11,-28],[11,-50]);
+    for(const [x,z] of houses) this.house(B,G,x,z);
+    // 广场：井 + 篝火
+    S.push([2.4,0.9,2.4,0x8a8478,0,0.45,-38]); B.push([1.8,0.3,1.8,0x2a4a6a,0,0.8,-38]);
+    for(const [dx,dz] of [[-1,-1],[1,-1],[-1,1],[1,1]]) B.push([0.15,1.6,0.15,0x5a3e24,dx,1.7,dz-38]);
+    B.push([2.8,0.4,2.8,0x6a3a24,0,2.6,-38]);
+    B.push([1.4,0.3,0.3,0x4a3018,4.5,0.15,-34]); B.push([0.3,0.3,1.4,0x4a3018,4.5,0.15,-34]); G.push([0.6,0.6,0.6,0xff8a20,4.5,0.5,-34]);
+    const fire=new THREE.PointLight(0xff8a30,1.6,22,2); fire.position.set(4.5,1.6,-34); scene.add(fire); this.torches.push(fire);
+    // 农田
+    for(const sx of [-1,1]) for(let r=0;r<4;r++){ B.push([7,0.5,1.2,0x5a3a22,sx*44,0,-30-r*2]); for(let k=0;k<6;k++) B.push([0.4,0.6,0.4,0x7aa03a,sx*44-3+k*1.2,0.5,-30-r*2]); }
+
+    const mk=(list,mat,tile,shadow)=>{ const m=new THREE.Mesh(mergeBoxes(list,tile),mat); m.receiveShadow=SHADOWS; m.castShadow=SHADOWS&&shadow; scene.add(m); return m; };
+    this.wallFront = mk(S,STONE_MAT,1.5,true);
+    mk(B,BLOCK_MAT,1,true);
+    const gm=new THREE.Mesh(mergeBoxes(G,0),GLOW_MAT); scene.add(gm);
+
+    // 村民
+    const vcols=[0xa84a3a,0x3a6aa8,0x6a8a3a,0xb8983a,0x8a5aa0,0xd0d0c0];
+    for(let i=0;i<10;i++){
+      const geos=humanGeos({skin:[0xe0b088,0xc89060,0x8a5a3a][i%3], shirt:vcols[i%6], pants:varyCol(0x4a4038,0.3), hair:[0x2a1a10,0x6a4a20,0xd8b030][i%3], eye:0x1a1a1a});
+      const h=buildHuman(geos,0.95); h.root.position.set(rand(-25,25),0,rand(-65,-12)); scene.add(h.root);
+      this.villagers.push({h, tx:h.root.position.x, tz:h.root.position.z, wait:rand(0,4), ph:Math.random()*6});
+    }
+  },
+  house(B,G,x,z){
+    const w=rand(6,8), d=rand(5,7), h=rand(3,4.2);
+    const wc=Math.random()<0.5?varyCol(0xd8c8a0,0.1):varyCol(0x9a7048,0.12), rc=varyCol(Math.random()<0.5?0x8a3a2a:0x5a4a3a,0.15), post=0x4a3220;
+    B.push([w,h,d,wc,x,h/2,z]);
+    for(const [dx,dz] of [[-1,-1],[1,-1],[-1,1],[1,1]]) B.push([0.35,h,0.35,post,x+dx*(w/2),h/2,z+dz*(d/2)]);
+    B.push([w+0.2,0.3,d+0.2,post,x,h,z]);
+    for(let i=0;i<4;i++){ const dd=(d+1.2)*(1-i/4.2); B.push([w+0.8,0.55,dd,i===3?varyCol(rc,0.1):rc,x,h+0.35+i*0.55,z]); }
+    B.push([1.2,2,0.12,0x3a2414,x,1,z+d/2+0.04]);                     // 门（朝城墙）
+    for(const sx of [-1,1]){ G.push([0.08,0.8,1,0xffc860,x+sx*(w/2+0.03),h*0.55,z]); }
+    G.push([0.9,0.8,0.08,0xffc860,x+w/4+0.4,h*0.6,z+d/2+0.03]);
+    if(Math.random()<0.5){ B.push([0.7,1.6,0.7,0x7a6a5a,x+w/3,h+2.2,z-d/5]); }
+  },
+  update(dt, t){
+    for(const L of this.torches) L.intensity = L.userData.base ?? (L.userData.base=L.intensity), L.intensity = L.userData.base*(0.85+Math.sin(t*13+L.position.x)*0.08+Math.random()*0.08);
+    for(const v of this.villagers){
+      const p=v.h.root.position;
+      if(v.wait>0){ v.wait-=dt; animWalk(v.h,0,0); if(v.wait<=0){ v.tx=rand(-30,30); v.tz=rand(-68,-12); } continue; }
+      const dx=v.tx-p.x, dz=v.tz-p.z, dd=Math.hypot(dx,dz);
+      if(dd<0.4){ v.wait=rand(2,7); continue; }
+      p.x+=dx/dd*1.3*dt; p.z+=dz/dd*1.3*dt; v.h.root.rotation.y=Math.atan2(dx,dz); v.ph+=dt*7; animWalk(v.h,v.ph,0.6);
+    }
+  }
+};
+
+/* =====================================================================
+   5. 方块人（僵尸 / 士兵 / 村民 共用）
+   ===================================================================== */
+const geoCache = new Map();
+function humanGeos(c){
+  const key=JSON.stringify(c); if(geoCache.has(key)) return geoCache.get(key);
+  const head=[[0.46,0.46,0.46,c.skin,0,0.23,0],[0.1,0.07,0.03,c.eye||0x1a1a1a,-0.11,0.26,0.23],[0.1,0.07,0.03,c.eye||0x1a1a1a,0.11,0.26,0.23],[0.18,0.05,0.03,0x3a1a14,0,0.11,0.23]];
+  if(c.hair) head.push([0.48,0.12,0.48,c.hair,0,0.44,0],[0.48,0.2,0.08,c.hair,0,0.34,-0.21]);
+  if(c.helmet) head.push([0.54,0.18,0.54,c.helmet,0,0.47,0],[0.56,0.04,0.56,c.helmet,0,0.38,0.02]);
+  const torso=[[0.5,0.7,0.28,c.shirt,0,0.35,0]];
+  if(c.vest) torso.push([0.52,0.42,0.3,c.vest,0,0.42,0],[0.4,0.04,0.31,0x2a2a2a,0,0.12,0]);
+  const g={ head:mergeBoxes(head), torso:mergeBoxes(torso),
+    arm:mergeBoxes([[0.2,0.32,0.2,c.shirt,0,-0.16,0],[0.19,0.4,0.19,c.skin,0,-0.5,0]]),
+    leg:mergeBoxes([[0.24,0.66,0.24,c.pants,0,-0.33,0],[0.25,0.12,0.3,0x2a2622,0,-0.69,0.03]]) };
+  geoCache.set(key,g); return g;
+}
+function buildHuman(g, s=1){
+  const root=new THREE.Group(), hip=new THREE.Group(); root.add(hip);
+  const m=geo=>{ const x=new THREE.Mesh(geo,CHAR_MAT); x.castShadow=SHADOWS; return x; };
+  const torso=m(g.torso); torso.position.y=0.75; hip.add(torso);
+  const head=m(g.head); head.position.y=1.45; hip.add(head);
+  const mkLimb=(geo,x,y)=>{ const p=new THREE.Group(); p.position.set(x,y,0); p.add(m(geo)); hip.add(p); return p; };
+  const legL=mkLimb(g.leg,-0.13,0.75), legR=mkLimb(g.leg,0.13,0.75), armL=mkLimb(g.arm,-0.36,1.4), armR=mkLimb(g.arm,0.36,1.4);
+  root.scale.setScalar(s);
+  return { root, hip, head, legL, legR, armL, armR };
+}
+function animWalk(h, ph, amp){ const s=Math.sin(ph)*amp; h.legL.rotation.x=s; h.legR.rotation.x=-s; h.armL.rotation.x=-s*0.8; h.armR.rotation.x=s*0.8; h.hip.position.y=Math.abs(Math.cos(ph))*amp*0.06; }
+
+/* =====================================================================
+   6. 特效：方块粒子（InstancedMesh）、弹道线、漂浮文字
+   ===================================================================== */
+const Fx = {
+  N:400, parts:[], mesh:null, dummy:new THREE.Object3D(), tracers:[],
+  init(){
+    this.mesh=new THREE.InstancedMesh(new THREE.BoxGeometry(1,1,1), new THREE.MeshBasicMaterial({color:0xffffff}), this.N);
+    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage); this.mesh.frustumCulled=false; scene.add(this.mesh);
+    const c=new THREE.Color(1,1,1);
+    for(let i=0;i<this.N;i++){ this.parts.push({life:0,p:new V3(),v:new V3(),s:0.1,g:1}); this.mesh.setColorAt(i,c); this.mesh.setMatrixAt(i,new THREE.Matrix4().makeScale(0,0,0)); }
+    for(let i=0;i<60;i++){
+      const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute([0,0,0,0,0,0],3));
+      const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:0xffe090,transparent:true,opacity:0})); l.frustumCulled=false; scene.add(l); this.tracers.push({l,life:0});
+    }
+  },
+  burst(p, color, n, speed=3, size=0.12, grav=1){
+    const c=new THREE.Color(color);
+    for(let k=0;k<n;k++){
+      const i=this.parts.findIndex(q=>q.life<=0); if(i<0) return; const q=this.parts[i];
+      q.life=rand(0.4,0.9); q.max=q.life; q.p.copy(p); q.v.set(rand(-1,1),rand(0.2,1.5),rand(-1,1)).multiplyScalar(speed); q.s=size*rand(0.6,1.3); q.g=grav;
+      this.mesh.setColorAt(i,c);
+    }
+    this.mesh.instanceColor.needsUpdate=true;
+  },
+  tracer(a,b,color=0xffe090){
+    const t=this.tracers.find(q=>q.life<=0)||this.tracers[0]; const p=t.l.geometry.attributes.position;
+    p.setXYZ(0,a.x,a.y,a.z); p.setXYZ(1,b.x,b.y,b.z); p.needsUpdate=true; t.l.material.color.setHex(color); t.life=0.07; t.l.material.opacity=0.9;
+  },
+  update(dt){
+    for(let i=0;i<this.N;i++){
+      const q=this.parts[i]; if(q.life<=0) continue; q.life-=dt;
+      q.v.y-=9.8*q.g*dt; q.p.addScaledVector(q.v,dt); if(q.p.y<0.05){ q.p.y=0.05; q.v.set(0,0,0); }
+      const s=q.life>0? q.s*Math.min(1,q.life/q.max*2):0;
+      this.dummy.position.copy(q.p); this.dummy.scale.setScalar(s); this.dummy.updateMatrix(); this.mesh.setMatrixAt(i,this.dummy.matrix);
+    }
+    this.mesh.instanceMatrix.needsUpdate=true;
+    for(const t of this.tracers){ if(t.life>0){ t.life-=dt; t.l.material.opacity=Math.max(0,t.life/0.07)*0.9; } else t.l.material.opacity=0; }
+  }
+};
+
+/* =====================================================================
+   7. 僵尸
+   ===================================================================== */
+const Zombies = {
+  list:[], marked:null, markMesh:null,
+  init(){
+    this.markMesh=new THREE.Mesh(new THREE.OctahedronGeometry(0.3), new THREE.MeshBasicMaterial({color:0xff3030,fog:false,depthTest:false}));
+    this.markMesh.renderOrder=10; this.markMesh.visible=false; scene.add(this.markMesh);
+  },
+  spawn(type, wave){
+    const T=ZTYPES[type], h=buildHuman(humanGeos(T.c), T.s);
+    const x=rand(-40,40), z=rand(CFG.spawnZ[0],CFG.spawnZ[1]);
+    h.root.position.set(x,0,z); h.root.rotation.y=Math.PI; scene.add(h.root);
+    h.armL.rotation.x=h.armR.rotation.x=-Math.PI/2+0.15;
+    const hpMul=1+0.09*(wave-1);
+    this.list.push({ type, T, h, s:T.s, hp:T.hp*hpMul, maxHp:T.hp*hpMul, speed:T.speed*rand(0.85,1.15)*(1+0.02*wave), x, ph:Math.random()*6,
+      state:'walk', atkZ: CFG.wall.front+0.45*T.s+rand(0,0.7), dead:0, alive:true, wob:rand(0,6), groan:rand(3,12) });
+  },
+  update(dt){
+    let attackers=0;
+    for(const z of this.list){
+      const p=z.h.root.position;
+      if(!z.alive){
+        z.dead+=dt; const k=Math.min(1,z.dead/0.45);
+        z.h.root.rotation.x=-k*Math.PI/2*z.fallDir; if(z.dead>2) p.y-=dt*0.6;
+        continue;
+      }
+      z.groan-=dt; if(z.groan<0){ z.groan=rand(6,16); if(p.z<70) Sfx.groan(); }
+      if(z.state==='walk'){
+        z.ph+=dt*z.speed*3.2; animWalk(z.h,z.ph,0.55); z.h.armL.rotation.x=-Math.PI/2+0.15+Math.sin(z.ph)*0.15; z.h.armR.rotation.x=-Math.PI/2+0.15-Math.sin(z.ph)*0.15;
+        p.z-=z.speed*dt; p.x+=Math.sin(z.ph*0.3+z.wob)*0.25*dt;
+        z.h.root.rotation.y=Math.PI+Math.sin(z.ph*0.3+z.wob)*0.12;
+        if(p.z<=z.atkZ){ p.z=z.atkZ; z.state='attack'; z.ph=0; }
+      } else {
+        attackers++;
+        z.ph+=dt*(z.type==='brute'?3:6);
+        const sw=Math.sin(z.ph); z.h.armL.rotation.x=-Math.PI/2-0.6+sw*0.6; z.h.armR.rotation.x=-Math.PI/2-0.6-sw*0.6; animLegsIdle(z.h);
+        z.h.root.rotation.y=Math.PI;
+        Wall.damage(z.T.dps*dt*(1+0.04*(Game.wave-1)));
+        if(Math.random()<dt*2) Sfx.wallHit();
+        if(z.type==='brute' && Math.random()<dt*1.5){ Fx.burst(new V3(p.x,rand(0.5,2.5),CFG.wall.front+0.1),0xa09888,3,2,0.15); Game.shake=Math.max(Game.shake,0.08); }
+      }
+    }
+    // 简单分离，防止挤成一团
+    const L=this.list;
+    for(let i=0;i<L.length;i++){ const a=L[i]; if(!a.alive) continue; const pa=a.h.root.position;
+      for(let j=i+1;j<L.length;j++){ const b=L[j]; if(!b.alive) continue; const pb=b.h.root.position;
+        const dx=pb.x-pa.x, dz=pb.z-pa.z, r=0.42*(a.s+b.s), d2=dx*dx+dz*dz; if(d2>r*r||d2<1e-6) continue;
+        const d=Math.sqrt(d2), push=(r-d)*0.5, nx=dx/d; pa.x-=nx*push; pb.x+=nx*push;
+        if(a.state==='walk') pa.z-= (dz/d)*push*0.5; if(b.state==='walk') pb.z+=(dz/d)*push*0.5;
+      }
+      pa.x=clamp(pa.x,-43,43);
+    }
+    // 清理
+    for(let i=L.length-1;i>=0;i--){ const z=L[i]; if(!z.alive && z.dead>3.5){ scene.remove(z.h.root); L.splice(i,1); } }
+    if(this.marked && !this.marked.alive) this.marked=null;
+    this.markMesh.visible=!!this.marked;
+    if(this.marked){ const p=this.marked.h.root.position; this.markMesh.position.set(p.x,p.y+2.4*this.marked.s+Math.sin(performance.now()/150)*0.15,p.z); this.markMesh.rotation.y+=dt*4; }
+    return attackers;
+  },
+  aliveCount(){ let n=0; for(const z of this.list) if(z.alive) n++; return n; },
+  // 射线检测：返回按距离排序的命中 {z, t, head}
+  raycast(o, d, max){
+    const hits=[];
+    for(const z of this.list){
+      if(!z.alive) continue; const p=z.h.root.position, s=z.s;
+      const th=rayBox(o,d,p.x,p.y+1.68*s,p.z,0.27*s,0.27*s,0.27*s);
+      const tb=rayBox(o,d,p.x,p.y+0.73*s,p.z+0.1*s,0.34*s,0.73*s,0.4*s);
+      if(th>=0 && th<=max && (tb<0 || th<=tb+0.3)) hits.push({z,t:th,head:true});
+      else if(tb>=0 && tb<=max) hits.push({z,t:tb,head:false});
+    }
+    return hits.sort((a,b)=>a.t-b.t);
+  },
+  damage(z, dmg, head, point, by){
+    if(!z.alive) return false;
+    z.hp-=dmg*(head?2.2:1);
+    Fx.burst(point, head?0x7a1a10:0x5a8a2a, head?7:4, 2.5, 0.1);
+    if(z.hp<=0){
+      z.alive=false; z.fallDir=1; Game.kills++;
+      const g=Math.round(z.T.gold*(1+0.03*Game.wave)); Game.addGold(g);
+      Fx.burst(point,0x5a8a2a,10,3,0.14); if(by==='player') Sfx.kill();
+      return true;
+    }
+    return false;
+  },
+  clear(){ for(const z of this.list) scene.remove(z.h.root); this.list.length=0; this.marked=null; }
+};
+function animLegsIdle(h){ h.legL.rotation.x*=0.9; h.legR.rotation.x*=0.9; }
+function rayBox(o,d,cx,cy,cz,hx,hy,hz){
+  let tmin=-Infinity,tmax=Infinity;
+  const ax=[[o.x,d.x,cx-hx,cx+hx],[o.y,d.y,cy-hy,cy+hy],[o.z,d.z,cz-hz,cz+hz]];
+  for(const [oo,dd,lo,hi] of ax){
+    if(Math.abs(dd)<1e-8){ if(oo<lo||oo>hi) return -1; continue; }
+    let t1=(lo-oo)/dd, t2=(hi-oo)/dd; if(t1>t2){ const s=t1; t1=t2; t2=s; }
+    if(t1>tmin) tmin=t1; if(t2<tmax) tmax=t2; if(tmin>tmax) return -1;
+  }
+  return tmax<0?-1:Math.max(0,tmin);
+}
+
+/* =====================================================================
+   8. 城墙耐久
+   ===================================================================== */
+const Wall = {
+  hp:CFG.wall.hp, max:CFG.wall.hp, lvl:0, flash:0,
+  reset(){ this.max=CFG.wall.hp; this.hp=this.max; this.lvl=0; },
+  damage(v){ this.hp-=v; this.flash=0.15; if(this.hp<=0){ this.hp=0; Game.gameOver(); } },
+  repair(v){ this.hp=Math.min(this.max,this.hp+v); },
+};
+
+/* =====================================================================
+   9. 机枪（可遥控 / 机枪手自动操作）
+   ===================================================================== */
+const Turrets = {
+  list:[], lvl:0,
+  build(x){
+    const root=new THREE.Group(); root.position.set(x,CFG.wall.top,1.05); scene.add(root);
+    const base=new THREE.Mesh(mergeBoxes([[0.9,0.25,0.9,0x3a3a3a,0,0.12,0],[0.25,0.9,0.25,0x4a4a4a,0,0.6,0]]),BLOCK_MAT); root.add(base);
+    const yaw=new THREE.Group(); yaw.position.y=1.15; root.add(yaw);
+    const pitch=new THREE.Group(); yaw.add(pitch);
+    const gun=new THREE.Mesh(mergeBoxes([
+      [0.36,0.32,0.8,0x2f3530,0,0,0],[0.14,0.14,1.2,0x1a1a1a,0,0.02,0.95],[0.2,0.2,0.18,0x1a1a1a,0,0.02,1.55],
+      [1.2,0.75,0.07,0x4a5a3a,0,0.1,0.48],[0.3,0.22,0.3,0x5a6a3a,0.32,-0.06,0.05],[0.08,0.25,0.08,0x1a1a1a,-0.12,-0.25,-0.38],[0.08,0.25,0.08,0x1a1a1a,0.12,-0.25,-0.38],
+      [0.06,0.12,0.06,0xd8b030,0,0.22,0.3]
+    ]),BLOCK_MAT); gun.castShadow=SHADOWS; pitch.add(gun);
+    const flash=new THREE.Mesh(new THREE.BoxGeometry(0.45,0.45,0.45),glowMat(0xffd070)); flash.position.set(0,0.02,1.8); flash.visible=false; pitch.add(flash);
+    const muzzle=new THREE.Object3D(); muzzle.position.set(0,0.02,1.75); pitch.add(muzzle);
+    const t={ x, root, yawG:yaw, pitchG:pitch, flash, muzzle, yaw:0, pitch:-0.15, heat:0, over:false, cd:0, gunner:null, flashT:0 };
+    this.list.push(t); return t;
+  },
+  dmg(){ return 30*(1+0.3*this.lvl); },
+  fire(t, dir, origin, acc){   // acc: null = 玩家（准星射线），数字 = 自动命中率
+    if(t.over || t.cd>0) return;
+    t.cd = t.gunner && !acc ? 0.065 : (acc!=null?0.11:0.065);
+    t.heat += 0.03; if(t.heat>=1){ t.heat=1; t.over=true; Sfx.overheat(); }
+    t.flashT=0.04; Sfx.shot(acc!=null?'unit':'mg');
+    const m=new V3(); t.muzzle.getWorldPosition(m);
+    const d=dir.clone(); d.x+=rand(-1,1)*0.012; d.y+=rand(-1,1)*0.012; d.z+=rand(-1,1)*0.012; d.normalize();
+    let end;
+    if(acc==null){
+      const hits=Zombies.raycast(origin,d,220);
+      if(hits.length){ const h=hits[0]; end=origin.clone().addScaledVector(d,h.t); Zombies.damage(h.z,this.dmg(),h.head,end,'player'); Game.hitmark(); }
+      else end=groundEnd(origin,d,220);
+    } else {
+      const tz=acc.target, p=tz.h.root.position, hitp=new V3(p.x,p.y+rand(0.5,1.6)*tz.s,p.z);
+      if(Math.random()<acc.p){ Zombies.damage(tz,this.dmg()*0.8,false,hitp,'unit'); end=hitp; }
+      else { end=hitp.clone().add(new V3(rand(-2,2),rand(-1,1),rand(-2,2))); end.y=Math.max(0,end.y); Fx.burst(end,0x7a6a50,2,1.5,0.08); }
+    }
+    Fx.tracer(m,end,0xffc060);
+  },
+  update(dt){
+    const cool = 0.32*(1+0.2*this.lvl);
+    for(const t of this.list){
+      t.cd-=dt; t.flashT-=dt; t.flash.visible=t.flashT>0; if(t.flash.visible) t.flash.rotation.z=Math.random()*3;
+      t.heat=Math.max(0,t.heat-cool*dt); if(t.over && t.heat<0.35) t.over=false;
+      const controlled = Player.mode==='turret' && Turrets.list[Player.turretIdx]===t;
+      if(!controlled && t.gunner && Game.state!=='over'){
+        const tz=pickTarget(new V3(t.x,7,1), 95, (z)=>{ const p=z.h.root.position; return Math.abs(Math.atan2(p.x-t.x,p.z-1))<1.2 && p.z>5; });
+        if(tz){
+          const p=tz.h.root.position, dx=p.x-t.x, dz=p.z-1, dy=(p.y+1*tz.s)-7.15;
+          const wy=Math.atan2(dx,dz), wp=Math.atan2(dy,Math.hypot(dx,dz));
+          t.yaw+=clamp(wy-t.yaw,-2.2*dt,2.2*dt); t.pitch+=clamp(wp-t.pitch,-2*dt,2*dt);
+          if(Math.abs(wy-t.yaw)<0.08 && !t.over && t.heat<0.9) this.fire(t,dirFrom(t.yaw,t.pitch),null,{target:tz,p:0.45});
+        }
+      }
+      t.yawG.rotation.y=t.yaw; t.pitchG.rotation.x=-t.pitch;
+      if(t.gunner) t.gunner.h.root.rotation.y=t.yaw;
+    }
+  },
+  clear(){ for(const t of this.list) scene.remove(t.root); this.list.length=0; this.lvl=0; }
+};
+function dirFrom(yaw,pitch){ return new V3(Math.sin(yaw)*Math.cos(pitch), Math.sin(pitch), Math.cos(yaw)*Math.cos(pitch)); }
+function groundEnd(o,d,max){ if(d.y<-0.001){ const t=-o.y/d.y; if(t<max){ const e=o.clone().addScaledVector(d,t); Fx.burst(e,0x6a5a40,3,1.8,0.09); return e; } } return o.clone().addScaledVector(d,max); }
+// 目标选择：集火标记优先，否则离城墙最近（威胁最大）的
+function pickTarget(from, range, filter, preferBig){
+  const m=Zombies.marked;
+  if(m && m.alive && m.h.root.position.distanceTo(from)<range && (!filter||filter(m))) return m;
+  let best=null, bs=Infinity;
+  for(const z of Zombies.list){
+    if(!z.alive) continue; const p=z.h.root.position; if(p.z>CFG.spawnZ[0]-5) continue;
+    const d=p.distanceTo(from); if(d>range || (filter && !filter(z))) continue;
+    const sc=p.z - (preferBig && z.type==='brute'?40:0);
+    if(sc<bs){ bs=sc; best=z; }
+  }
+  return best;
+}
+
+/* =====================================================================
+   10. 招募的士兵
+   ===================================================================== */
+const Army = {
+  list:[],
+  recruit(type){
+    const U=UNITS[type]; let x, z=0.75;
+    if(type==='engineer'){ x=ENGINEER_SLOTS.find(s=>!this.list.some(u=>u.type==='engineer'&&u.x===s)); z=-1.1; }
+    else if(type==='gunner'){ const t=Turrets.list.find(t=>!t.gunner); if(!t) return false; x=t.x-0.9; }
+    else x=SOLDIER_SLOTS.find(s=>!this.list.some(u=>u.x===s && u.type!=='engineer' && u.type!=='gunner'));
+    if(x==null) return false;
+    const c={...U.c}; if(type!=='engineer') { c.helmet=c.hair; c.vest=0x3a3a2a; }
+    const h=buildHuman(humanGeos(c),1); h.root.position.set(x,CFG.wall.top,z); scene.add(h.root);
+    if(type==='militia'||type==='sniper'){
+      const gun=new THREE.Mesh(mergeBoxes(type==='sniper'?[[0.08,0.1,1.3,0x2a2a2a,0,0,0.4],[0.1,0.12,0.3,0x1a1a1a,0,0.11,0.2],[0.1,0.18,0.4,0x6a4a2a,0,-0.05,-0.15]]:[[0.08,0.12,0.9,0x2a2a2a,0,0,0.3],[0.1,0.18,0.35,0x6a4a2a,0,-0.05,-0.12],[0.06,0.2,0.08,0x1a1a1a,0,-0.15,0.2]]),BLOCK_MAT);
+      gun.position.set(0.12,1.3,0.25); h.hip.add(gun); h.armL.rotation.x=h.armR.rotation.x=-1.35; h.armL.rotation.z=-0.35;
+    }
+    const u={ type, U, h, x, cd:rand(0,1), ph:Math.random()*6, flash:0 };
+    if(type==='gunner'){ const t=Turrets.list.find(t=>!t.gunner); t.gunner=u; u.turret=t; h.root.position.z=0.55; h.root.position.x=t.x-0.85; h.armL.rotation.x=h.armR.rotation.x=-1.2; }
+    this.list.push(u); return true;
+  },
+  count(type){ return this.list.filter(u=>u.type===type).length; },
+  canRecruit(type){
+    if(Game.pop<=0) return '村民不足';
+    if(type==='engineer') return this.count('engineer')<ENGINEER_SLOTS.length?null:'工匠已满';
+    if(type==='gunner') return Turrets.list.some(t=>!t.gunner)?null:'没有空闲机枪';
+    return this.list.filter(u=>u.type==='militia'||u.type==='sniper').length<SOLDIER_SLOTS.length?null:'墙上站满了';
+  },
+  update(dt){
+    for(const u of this.list){
+      const p=u.h.root.position;
+      if(u.type==='engineer'){
+        u.ph+=dt*8; u.h.armR.rotation.x=-1.2+Math.sin(u.ph)*0.8; u.h.root.rotation.y=0;
+        if(Wall.hp<Wall.max && Game.state!=='over'){ Wall.repair(u.U.repair*dt); if(Math.random()<dt*1.5) Fx.burst(new V3(p.x,p.y+0.9,p.z+0.6),0xffd070,1,1,0.05,0.3); }
+        continue;
+      }
+      if(u.type==='gunner') continue;
+      u.cd-=dt;
+      const from=new V3(p.x,p.y+1.6,p.z), tz=pickTarget(from,u.U.range,null,u.type==='sniper');
+      if(tz){
+        const tp=tz.h.root.position; u.h.root.rotation.y=Math.atan2(tp.x-p.x,tp.z-p.z);
+        if(u.cd<=0){
+          u.cd=u.U.rate*rand(0.85,1.15);
+          const d=tp.distanceTo(from), hitp=new V3(tp.x,tp.y+rand(0.6,1.7)*tz.s,tp.z), muzzle=new V3(p.x+Math.sin(u.h.root.rotation.y)*0.9,p.y+1.35,p.z+Math.cos(u.h.root.rotation.y)*0.9);
+          const chance=u.U.acc*(1-0.35*d/u.U.range);
+          if(Math.random()<chance){ Zombies.damage(tz,u.U.dmg,u.type==='sniper'&&Math.random()<0.4,hitp,'unit'); Fx.tracer(muzzle,hitp,0xfff0b0); }
+          else { const e=hitp.clone().add(new V3(rand(-1.5,1.5),rand(-0.5,1),rand(-1.5,1.5))); e.y=Math.max(0,e.y); Fx.tracer(muzzle,e,0xfff0b0); }
+          Sfx.shot('unit');
+        }
+      } else u.h.root.rotation.y*=0.95;
+    }
+  },
+  clear(){ for(const u of this.list) scene.remove(u.h.root); this.list.length=0; }
+};
+
+/* =====================================================================
+   11. 玩家（第一人称，城墙上行走）
+   ===================================================================== */
+const Player = {
+  pos:new V3(4,CFG.wall.top,0), yaw:0, pitch:-0.08, mode:'walk', turretIdx:0,
+  owned:{}, cur:'pistol', cd:0, reloading:0, aiming:false, firing:false, latch:false, bob:0, kick:0,
+  view:null, guns:{}, muzzle:null, flash:null, flashT:0,
+  reset(){
+    this.pos.set(4,CFG.wall.top,0); this.yaw=0; this.pitch=-0.08; this.mode='walk'; this.turretIdx=0;
+    this.owned={ pistol:{ mag:WEAPONS.pistol.mag, res:Infinity } }; this.select('pistol'); this.reloading=0; this.cd=0;
+  },
+  buildView(){
+    this.view=new THREE.Group(); this.view.scale.setScalar(0.62); camera.add(this.view);
+    const defs={
+      pistol:[[0.08,0.12,0.32,0x2a2a2a,0,0,-0.1],[0.07,0.18,0.09,0x3a2a1a,0,-0.12,0.02]],
+      rifle:[[0.09,0.12,0.75,0x2a2a2a,0,0,-0.25],[0.06,0.06,0.3,0x1a1a1a,0,0.01,-0.75],[0.08,0.2,0.08,0x1a1a1a,0,-0.14,-0.2],[0.1,0.14,0.3,0x6a4a2a,0,-0.03,0.25],[0.04,0.05,0.1,0x1a1a1a,0,0.09,-0.1]],
+      shotgun:[[0.1,0.11,0.8,0x3a3a3a,0,0.02,-0.3],[0.1,0.08,0.4,0x8a5a2a,0,-0.06,-0.4],[0.1,0.16,0.34,0x6a4a2a,0,-0.04,0.22]],
+      sniper:[[0.08,0.1,1.0,0x2a3a2a,0,0,-0.35],[0.11,0.11,0.35,0x1a1a1a,0,0.12,-0.15],[0.1,0.18,0.35,0x4a3a2a,0,-0.05,0.25]],
+    };
+    for(const k in defs){
+      const g=new THREE.Group();
+      g.add(new THREE.Mesh(mergeBoxes(defs[k]),BLOCK_MAT));
+      g.add(new THREE.Mesh(mergeBoxes([[0.13,0.13,0.16,0x3a3a3a,0,-0.1,0.08],[0.15,0.14,0.2,0x4a5a3a,0,-0.12,0.24]]),BLOCK_MAT));   // 手套 + 袖子
+      g.visible=false; this.view.add(g); this.guns[k]=g;
+    }
+    this.flash=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.12,0.12),glowMat(0xffe070)); this.view.add(this.flash); this.flash.visible=false;
+    this.muzzle=new THREE.Object3D(); this.view.add(this.muzzle);
+  },
+  select(id){
+    if(!this.owned[id]) return; this.cur=id; this.reloading=0; this.cd=0.2;
+    for(const k in this.guns) this.guns[k].visible=k===id;
+    const mz={pistol:-0.28,rifle:-0.92,shotgun:-0.72,sniper:-0.87}[id]; this.muzzle.position.set(0,0.01,mz); this.flash.position.set(0,0.01,mz-0.05);
+    HUD.bar();
+  },
+  cycle(dir){ const own=WEAPON_ORDER.filter(k=>this.owned[k]); const i=own.indexOf(this.cur); this.select(own[(i+dir+own.length)%own.length]); },
+  reload(){
+    const W=WEAPONS[this.cur], o=this.owned[this.cur];
+    if(this.reloading>0 || o.mag>=W.mag || o.res<=0) return; this.reloading=W.reload; Sfx.reload();
+  },
+  enterTurret(i){
+    if(!Turrets.list.length){ HUD.toast('还没有机枪'); return; }
+    this.turretIdx=clamp(i??this.turretIdx,0,Turrets.list.length-1); this.mode='turret'; this.aiming=false; HUD.bar();
+  },
+  exitTurret(){ this.mode='walk'; HUD.bar(); },
+  look(dx,dy){
+    if(this.mode==='turret'){ const t=Turrets.list[this.turretIdx]; t.yaw=clamp(t.yaw-dx,-1.25,1.25); t.pitch=clamp(t.pitch-dy,-0.95,0.3); }
+    else { const k=this.aiming?(WEAPONS[this.cur].scope?0.25:0.6):1; this.yaw-=dx*k; this.pitch=clamp(this.pitch-dy*k,-1.45,1.4); }
+  },
+  update(dt, input){
+    const W=WEAPONS[this.cur], o=this.owned[this.cur];
+    if(this.mode==='turret'){
+      const t=Turrets.list[this.turretIdx], d=dirFrom(t.yaw,t.pitch);
+      const piv=new V3(t.x,CFG.wall.top+1.15,1.05);
+      camera.position.copy(piv).addScaledVector(d,-2.3).add(new V3(0,0.75,0));
+      camera.lookAt(camera.position.clone().addScaledVector(d,10).add(new V3(0,-0.75*0.3,0)));
+      // 准星射线 = 相机中心
+      if(input.fire){ const cd=new V3(); camera.getWorldDirection(cd); this.fireTurret(t,cd); }
+      this.view.visible=false; camera.fov=lerp(camera.fov,65,dt*10); camera.updateProjectionMatrix();
+      return;
+    }
+    this.view.visible=true;
+    // 移动
+    const sp=(input.sprint&&!this.aiming?CFG.walk.sprint:CFG.walk.speed);
+    const f=new V3(Math.sin(this.yaw),0,Math.cos(this.yaw)), r=new V3(-Math.cos(this.yaw),0,Math.sin(this.yaw));
+    const mv=new V3().addScaledVector(f,input.my).addScaledVector(r,input.mx); const ml=mv.length();
+    if(ml>0.01){ mv.multiplyScalar(Math.min(1,ml)/ml*sp*(this.aiming?0.55:1)*dt); this.pos.add(mv); this.bob+=dt*sp*1.6*Math.min(1,ml); }
+    this.pos.x=clamp(this.pos.x,-CFG.walk.x,CFG.walk.x); this.pos.z=clamp(this.pos.z,CFG.walk.zMin,CFG.walk.zMax);
+    const bobY=Math.sin(this.bob*2)*0.04*Math.min(1,ml), bobX=Math.cos(this.bob)*0.03*Math.min(1,ml);
+    camera.position.set(this.pos.x,this.pos.y+CFG.walk.eye+bobY,this.pos.z);
+    const d=dirFrom(this.yaw,this.pitch); camera.lookAt(camera.position.clone().add(d));
+    // 瞄准 / FOV
+    this.aiming=input.aim && this.reloading<=0;
+    const tf=this.aiming?(W.scope?18:52):72; camera.fov=lerp(camera.fov,tf,dt*12); camera.updateProjectionMatrix();
+    // 换弹
+    if(this.reloading>0){ this.reloading-=dt; if(this.reloading<=0){ const need=W.mag-o.mag, take=Math.min(need,o.res); o.mag+=take; if(o.res!==Infinity) o.res-=take; } }
+    // 射击
+    this.cd-=dt;
+    if(!input.fire) this.latch=false;
+    if(input.fire && this.cd<=0 && this.reloading<=0 && !(this.latch && !W.auto)){
+      this.latch=true;
+      if(o.mag>0){ this.shoot(W); o.mag--; this.cd=W.rate; if(o.mag===0 && o.res>0) setTimeout(()=>this.reload(),150); }
+      else if(o.res>0) this.reload(); else { Sfx.empty(); this.cd=0.3; HUD.toast('没子弹了 · 去商店补充'); }
+    }
+    // 武器模型（瞄准居中 / 后坐 / 晃动 / 换弹下沉）
+    this.kick=Math.max(0,this.kick-dt*6);
+    const ax=this.aiming?0:0.24, ay=this.aiming?-0.13:-0.22, rl=this.reloading>0?Math.sin(Math.min(1,this.reloading/W.reload)*Math.PI)*0.25:0;
+    this.view.position.set(lerp(this.view.position.x,ax+bobX,dt*14), lerp(this.view.position.y,ay+bobY-rl,dt*14), -0.42+this.kick*0.12);
+    this.view.rotation.x=this.kick*0.25+rl*1.5;
+    this.view.visible=!(this.aiming&&W.scope&&camera.fov<30);
+    this.flashT-=dt; this.flash.visible=this.flashT>0;
+  },
+  shoot(W){
+    Sfx.shot(this.cur); this.kick=Math.min(1,this.kick+(W.pellets>1?1:this.cur==='sniper'?1:0.45)); this.flashT=0.04;
+    this.pitch+= (this.cur==='sniper'?0.03:this.cur==='shotgun'?0.04:0.008)*(this.aiming?0.5:1);
+    const o=camera.position.clone(), base=new V3(); camera.getWorldDirection(base);
+    const m=new V3(); this.muzzle.getWorldPosition(m);
+    let hitAny=false;
+    for(let i=0;i<W.pellets;i++){
+      const sp=W.spread*(this.aiming?0.35:1);
+      const d=base.clone().add(new V3(rand(-1,1)*sp,rand(-1,1)*sp,rand(-1,1)*sp)).normalize();
+      const hits=Zombies.raycast(o,d,W.range); let end=null, left=W.pierce||1;
+      for(const h of hits){ if(left<=0) break; const p=o.clone().addScaledVector(d,h.t); const falloff=W.pellets>1?clamp(1.4-h.t/W.range,0.3,1):1; Zombies.damage(h.z,W.dmg*falloff,h.head,p,'player'); hitAny=true; end=p; left--; }
+      if(!end || (W.pierce && left>0)) end=groundEnd(o,d,W.range);
+      if(i<3) Fx.tracer(m,end);
+    }
+    if(hitAny){ Sfx.hit(); Game.hitmark(); }
+  },
+  fireTurret(t, dir){ if(!t.over && t.cd<=0){ Turrets.fire(t,dir,camera.position.clone(),null); this.shakeT=0.03; } },
+};
+
+/* =====================================================================
+   12. HUD
+   ===================================================================== */
+const HUD = {
+  annT:null, toastT:null,
+  bar(){
+    const el=$('bar'); el.innerHTML='';
+    if(Player.mode==='turret'){
+      Turrets.list.forEach((t,i)=>{ const d=document.createElement('div'); d.className='slot'+(i===Player.turretIdx?' cur':''); d.innerHTML=`<i>${i+1}</i>机枪<br>${t.gunner?'有人':'空闲'}`; el.appendChild(d); });
+      return;
+    }
+    for(const k of WEAPON_ORDER){
+      const d=document.createElement('div'); d.className='slot'+(k===Player.cur?' cur':'')+(Player.owned[k]?'':' off');
+      d.innerHTML=`<i>${WEAPONS[k].key}</i><br>${WEAPONS[k].name}`; el.appendChild(d);
+    }
+  },
+  update(){
+    $('waveTxt').textContent=`第 ${Game.wave} 波`;
+    $('phaseTxt').textContent = Game.state==='prep' ? `准备阶段 · ${Math.ceil(Game.timer)} 秒后开战` : Game.state==='combat' ? `剩余僵尸 ${Game.remaining()}` : '';
+    $('killTxt').textContent=`击杀 ${Game.kills}`;
+    $('gold').textContent=Game.gold; $('pop').textContent=Game.pop;
+    const r=Wall.hp/Wall.max; $('wallfill').style.width=(r*100)+'%'; $('wallfill').classList.toggle('low',r<0.3);
+    $('walltxt').textContent=`${Math.ceil(Wall.hp)} / ${Wall.max}`;
+    $('vign').style.boxShadow=`inset 0 0 160px rgba(200,0,0,${Wall.flash>0 && r<0.5 ? 0.35:r<0.25?0.25:0})`;
+    const tm=Player.mode==='turret';
+    if(tm){
+      const t=Turrets.list[Player.turretIdx];
+      $('heat').style.display='block'; $('heatfill').style.width=(t.heat*100)+'%'; $('heatfill').style.background=t.over?'#ff3a2a':'#ffa830';
+      $('wName').textContent=`遥控机枪 #${Player.turretIdx+1}`; $('aMag').textContent=t.over?'过热':'∞'; $('aRes').textContent='';
+    } else {
+      $('heat').style.display='none';
+      const W=WEAPONS[Player.cur], o=Player.owned[Player.cur];
+      $('wName').textContent=W.name+(Player.reloading>0?' · 换弹中…':''); $('aMag').textContent=o.mag; $('aRes').textContent='/ '+(o.res===Infinity?'∞':o.res);
+    }
+    const sc=!tm && Player.aiming && WEAPONS[Player.cur].scope && camera.fov<30;
+    $('scope').style.display=sc?'block':'none'; $('cross').style.display=sc?'none':'block';
+    $('cross').classList.toggle('dot', !tm && Player.aiming && !sc);
+    const k=IS_TOUCH;
+    let hint='';
+    if(Game.state==='prep') hint = k ? '点「商店」招募士兵、买武器 · 「开战」立即开始' : 'B 打开商店（招募 / 武器 / 城防） · N 立即开战 · F 遥控机枪';
+    else if(tm) hint = k ? '拖动瞄准 · 按住射击 · 再点「机枪」退出' : '鼠标瞄准 · 左键扫射 · 1-3 切换机枪 · F 退出';
+    else hint = k ? '「集火」：准星对准僵尸，全军集中攻击' : 'T 标记目标让士兵集火 · F 遥控机枪';
+    $('hint').textContent=hint;
+    const counts=Object.keys(UNITS).map(k=>[UNITS[k].name,Army.count(k)]).filter(a=>a[1]>0);
+    $('units').innerHTML = (counts.length? '守军：'+counts.map(a=>`${a[0]}×${a[1]}`).join('  ') : '守军：只有你') + `<br>机枪 ${Turrets.list.length} 台` + (Zombies.marked?'<br><span style="color:#ff6a5a">◆ 集火目标已标记</span>':'');
+    if(k){ $('tShop').style.display=Game.state==='prep'?'flex':'none'; $('tNext').style.display=Game.state==='prep'?'flex':'none'; $('tTurret').classList.toggle('on',tm); $('tAim').classList.toggle('on',Input.touchAim); }
+  },
+  announce(big, small='', ms=2200){ const a=$('announce'); a.innerHTML=big+(small?`<small>${small}</small>`:''); a.style.opacity=1; clearTimeout(this.annT); this.annT=setTimeout(()=>a.style.opacity=0,ms); },
+  toast(s){ const a=$('toast'); a.textContent=s; a.style.opacity=1; clearTimeout(this.toastT); this.toastT=setTimeout(()=>a.style.opacity=0,1400); },
+};
+
+/* =====================================================================
+   13. 商店
+   ===================================================================== */
+const Shop = {
+  open:false, tab:'weapon',
+  items(){
+    const L=[];
+    if(this.tab==='weapon'){
+      for(const k of WEAPON_ORDER){ const W=WEAPONS[k]; if(k==='pistol') continue;
+        if(!Player.owned[k]) L.push({ name:W.name, desc:`伤害 ${W.dmg}${W.pellets>1?'×'+W.pellets:''} · 弹匣 ${W.mag}${W.auto?' · 全自动':''}${W.pierce?' · 穿透 '+W.pierce:''}${W.scope?' · 右键开镜':''}`, price:W.price, act:'购买', buy:()=>{ Player.owned[k]={mag:W.mag,res:W.reserve}; Player.select(k); } });
+        else L.push({ name:W.name+' 弹药', desc:`+${W.ammoAmt} 发（当前备弹 ${Player.owned[k].res}）`, price:W.ammoPrice, act:'补充', buy:()=>{ Player.owned[k].res+=W.ammoAmt; } });
+      }
+    } else if(this.tab==='unit'){
+      for(const k in UNITS){ const U=UNITS[k]; const why=Army.canRecruit(k);
+        L.push({ name:`${U.name}（已有 ${Army.count(k)}）`, desc:U.desc+(U.dmg?` 伤害 ${U.dmg} · 射程 ${U.range}`:'')+' · 消耗 1 名村民', price:U.price, act:'招募', why, buy:()=>{ if(Army.recruit(k)) Game.pop--; } });
+      }
+    } else {
+      L.push({ name:'修补城墙', desc:`立即恢复 300 耐久（${Math.ceil(Wall.hp)} / ${Wall.max}）`, price:120, act:'修补', why:Wall.hp>=Wall.max?'城墙完好':null, buy:()=>Wall.repair(300) });
+      L.push({ name:`加固城墙 Lv.${Wall.lvl}`, desc:'耐久上限 +400，并回复 400', price:400+Wall.lvl*150, act:'加固', why:Wall.lvl>=6?'已满级':null, buy:()=>{ Wall.lvl++; Wall.max+=400; Wall.repair(400); } });
+      L.push({ name:`建造机枪（${Turrets.list.length} / ${TURRET_SLOTS.length}）`, desc:'墙头新增一台重机枪，可遥控或交给机枪手', price:600, act:'建造', why:Turrets.list.length>=TURRET_SLOTS.length?'位置已满':null, buy:()=>Turrets.build(TURRET_SLOTS[Turrets.list.length]) });
+      L.push({ name:`机枪升级 Lv.${Turrets.lvl}`, desc:`伤害 +30%，散热 +20%（当前伤害 ${Math.round(Turrets.dmg())}）`, price:400*(Turrets.lvl+1), act:'升级', why:Turrets.lvl>=4?'已满级':null, buy:()=>{ Turrets.lvl++; } });
+    }
+    return L;
+  },
+  render(){
+    $('shopGold').textContent=Game.gold;
+    document.querySelectorAll('#tabs .btn').forEach(b=>b.classList.toggle('on',b.dataset.tab===this.tab));
+    const box=$('items'); box.innerHTML='';
+    for(const it of this.items()){
+      const d=document.createElement('div'); d.className='item';
+      const why=it.why || (Game.gold<it.price?'金币不足':null);
+      d.innerHTML=`<h3>${it.name}</h3><p>${it.desc}</p>`;
+      const b=document.createElement('span'); b.className='btn'+(why?' gray':''); b.textContent=why?why:`${it.act} · 💰${it.price}`;
+      b.onclick=()=>{ if(why){ Sfx.deny(); return; } Game.gold-=it.price; it.buy(); Sfx.buy(); this.render(); HUD.bar(); };
+      d.appendChild(b); box.appendChild(d);
+    }
+  },
+  toggle(v){
+    if(v && Game.state!=='prep'){ HUD.toast('商店只在波次之间开放'); return; }
+    this.open=v; $('shop').classList.toggle('show',v);
+    if(v){ if(Player.mode==='turret') Player.exitTurret(); this.render(); if(document.pointerLockElement) document.exitPointerLock(); }
+    else Game.lock();
+  },
+};
+document.querySelectorAll('#tabs .btn').forEach(b=>b.onclick=()=>{ Shop.tab=b.dataset.tab; Shop.render(); });
+$('shopClose').onclick=()=>Shop.toggle(false);
+$('shopNext').onclick=()=>{ Shop.toggle(false); Game.startCombat(); };
+
+/* =====================================================================
+   14. 输入（键鼠 + 触屏）
+   ===================================================================== */
+const Input = {
+  keys:{}, mouse:{l:false,r:false}, sens:1, joy:{x:0,y:0,id:null}, lookId:null, lx:0, ly:0, touchFire:false, touchAim:false,
+  state(){
+    const k=this.keys;
+    return { mx:(k.KeyD?1:0)-(k.KeyA?1:0)+this.joy.x, my:(k.KeyW?1:0)-(k.KeyS?1:0)-this.joy.y, sprint:!!(k.ShiftLeft||k.ShiftRight),
+             fire:this.mouse.l||this.touchFire, aim:this.mouse.r||this.touchAim };
+  },
+};
+addEventListener('keydown',e=>{
+  if(Game.state==='title') return;
+  Input.keys[e.code]=true;
+  if(e.code==='Tab') e.preventDefault();
+  if(Game.state==='over'||Game.paused) return;
+  if(e.code==='KeyB'){ Shop.toggle(!Shop.open); return; }
+  if(Shop.open){ if(e.code==='KeyN'){ Shop.toggle(false); Game.startCombat(); } if(e.code==='Escape') Shop.toggle(false); return; }
+  if(e.code==='KeyN' && Game.state==='prep') Game.startCombat();
+  if(e.code==='KeyF') Player.mode==='turret'?Player.exitTurret():Player.enterTurret();
+  if(e.code==='KeyT') Game.mark();
+  if(e.code==='KeyR' && Player.mode==='walk') Player.reload();
+  if(/^Digit[1-4]$/.test(e.code)){ const n=+e.code[5];
+    if(Player.mode==='turret'){ if(n<=Turrets.list.length){ Player.turretIdx=n-1; HUD.bar(); } }
+    else { const id=WEAPON_ORDER.find(k=>WEAPONS[k].key===n); if(Player.owned[id]) Player.select(id); } }
+});
+addEventListener('keyup',e=>{ Input.keys[e.code]=false; });
+addEventListener('mousemove',e=>{ if(document.pointerLockElement && Game.playing()) Player.look(e.movementX*0.0022*Input.sens, e.movementY*0.0022*Input.sens); });
+renderer.domElement.addEventListener('mousedown',e=>{
+  if(IS_TOUCH) return; Sfx.init();
+  if(!document.pointerLockElement){ Game.lock(); return; }
+  if(e.button===0) Input.mouse.l=true; if(e.button===2) Input.mouse.r=true;
+});
+addEventListener('mouseup',e=>{ if(e.button===0) Input.mouse.l=false; if(e.button===2) Input.mouse.r=false; });
+addEventListener('contextmenu',e=>e.preventDefault());
+addEventListener('wheel',e=>{ if(Game.playing() && Player.mode==='walk') Player.cycle(e.deltaY>0?1:-1); });
+document.addEventListener('pointerlockchange',()=>{
+  if(!document.pointerLockElement && Game.playing() && !Shop.open && !IS_TOUCH) Game.setPaused(true);
+  Input.mouse.l=Input.mouse.r=false;
+});
+addEventListener('blur',()=>{ Input.keys={}; Input.mouse.l=Input.mouse.r=false; if(Game.playing() && !Shop.open) Game.setPaused(true); });
+
+// 触屏
+function setupTouch(){
+  $('touch').style.display='block';
+  const joy=$('joy'), knob=$('knob');
+  const jr=()=>joy.getBoundingClientRect();
+  joy.addEventListener('touchstart',e=>{ e.preventDefault(); const t=e.changedTouches[0]; Input.joy.id=t.identifier; moveJoy(t); },{passive:false});
+  const moveJoy=t=>{ const r=jr(), cx=r.left+r.width/2, cy=r.top+r.height/2; let dx=(t.clientX-cx)/(r.width/2), dy=(t.clientY-cy)/(r.height/2); const l=Math.hypot(dx,dy); if(l>1){dx/=l;dy/=l;}
+    Input.joy.x=dx; Input.joy.y=dy; knob.style.transform=`translate(${dx*45}px,${dy*45}px)`; Input.keys.ShiftLeft=l>0.95; };
+  const btn=(id,down,up)=>{ const b=$(id); b.addEventListener('touchstart',e=>{ e.preventDefault(); Sfx.init(); down(); },{passive:false}); if(up) b.addEventListener('touchend',e=>{ e.preventDefault(); up(); },{passive:false}); };
+  btn('tFire',()=>Input.touchFire=true,()=>Input.touchFire=false);
+  btn('tAim',()=>Input.touchAim=!Input.touchAim);
+  btn('tReload',()=>Player.reload());
+  btn('tTurret',()=>Player.mode==='turret'?Player.exitTurret():Player.enterTurret());
+  btn('tMark',()=>Game.mark());
+  btn('tSwitch',()=>{ if(Player.mode==='turret'){ Player.turretIdx=(Player.turretIdx+1)%Turrets.list.length; HUD.bar(); } else Player.cycle(1); });
+  btn('tShop',()=>Shop.toggle(true));
+  btn('tNext',()=>Game.startCombat());
+  btn('tPause',()=>Game.setPaused(true));
+  // 右半屏拖动视角（也允许按住射击键同时拖动：射击键上的手指不算视角）
+  addEventListener('touchstart',e=>{ for(const t of e.changedTouches){ if(t.target.closest && t.target.closest('.tb,#joy,.screen')) continue; if(t.clientX>innerWidth*0.35 && Input.lookId===null){ Input.lookId=t.identifier; Input.lx=t.clientX; Input.ly=t.clientY; } } },{passive:true});
+  addEventListener('touchmove',e=>{ for(const t of e.changedTouches){
+    if(t.identifier===Input.joy.id) moveJoy(t);
+    else if(t.identifier===Input.lookId){ if(Game.playing()) Player.look((t.clientX-Input.lx)*0.0042*Input.sens,(t.clientY-Input.ly)*0.0042*Input.sens); Input.lx=t.clientX; Input.ly=t.clientY; }
+  } },{passive:true});
+  const end=e=>{ for(const t of e.changedTouches){ if(t.identifier===Input.joy.id){ Input.joy.id=null; Input.joy.x=Input.joy.y=0; knob.style.transform=''; Input.keys.ShiftLeft=false; } if(t.identifier===Input.lookId) Input.lookId=null; } };
+  addEventListener('touchend',end); addEventListener('touchcancel',end);
+}
+
+/* =====================================================================
+   15. 游戏流程（准备 → 战斗 → 准备 … → 城破）
+   ===================================================================== */
+const Game = {
+  state:'title', paused:false, wave:1, timer:0, gold:0, pop:0, kills:0, queue:[], spawnT:0, shake:0, hitT:0, time:0,
+  playing(){ return (this.state==='prep'||this.state==='combat') && !this.paused && !Shop.open; },
+  lock(){ if(IS_TOUCH) return; try{ const p=renderer.domElement.requestPointerLock(); if(p&&p.catch) p.catch(()=>{}); }catch(e){} },
+  reset(){
+    Zombies.clear(); Army.clear(); Turrets.clear(); Wall.reset(); Player.reset();
+    Turrets.build(TURRET_SLOTS[0]);
+    this.wave=1; this.gold=CFG.startGold; this.pop=CFG.startPop; this.kills=0; this.queue=[]; Shop.open=false;
+    $('shop').classList.remove('show'); $('over').classList.remove('show'); $('pause').classList.remove('show');
+    HUD.bar(); this.startPrep(true);
+  },
+  start(){
+    Sfx.init(); $('title').classList.remove('show'); $('hud').style.display='block';
+    if(IS_TOUCH){ setupTouch(); try{ document.documentElement.requestFullscreen?.().then(()=>screen.orientation?.lock?.('landscape').catch(()=>{})).catch(()=>{}); }catch(e){} }
+    this.reset(); this.lock();
+  },
+  startPrep(first){
+    this.state='prep'; this.timer=first?45:CFG.prepTime;
+    HUD.announce(first?'守住城墙！':`第 ${this.wave-1} 波已击退`, first?'僵尸从野外过来了。先去商店（B）招募守军':'准备下一波 · 商店已开放');
+  },
+  startCombat(){
+    if(this.state!=='prep') return;
+    if(Shop.open) Shop.toggle(false);
+    this.state='combat'; const w=this.wave;
+    const total=Math.round(8+w*5+w*w*0.4), q=[];
+    const brutes=w>=3?Math.floor((w-1)/2):0, runners=w>=2?Math.floor(total*Math.min(0.45,0.08*w)):0;
+    for(let i=0;i<total-brutes-runners;i++) q.push('walker'); for(let i=0;i<runners;i++) q.push('runner'); for(let i=0;i<brutes;i++) q.push('brute');
+    for(let i=q.length-1;i>0;i--){ const j=(Math.random()*(i+1))|0; [q[i],q[j]]=[q[j],q[i]]; }
+    this.queue=q; this.spawnT=1; Sfx.horn();
+    HUD.announce(`第 ${w} 波`, `${total} 只僵尸来袭${brutes?` · 其中 ${brutes} 只巨尸`:''}`);
+  },
+  remaining(){ return this.queue.length+Zombies.aliveCount(); },
+  endCombat(){
+    const bonus=60+25*this.wave, refugees=this.wave%2===0?2:1;
+    this.gold+=bonus; this.pop+=refugees; this.wave++;
+    this.startPrep(false); HUD.toast(`清除奖励 +${bonus} 金 · ${refugees} 名难民加入村庄`);
+  },
+  addGold(g){ this.gold+=g; },
+  hitmark(){ this.hitT=0.12; },
+  mark(){
+    const o=camera.position.clone(), d=new V3(); camera.getWorldDirection(d);
+    const hits=Zombies.raycast(o,d,300);
+    // 准星附近宽松判定
+    let z=hits[0]?.z;
+    if(!z){ let best=0.06; for(const q of Zombies.list){ if(!q.alive) continue; const v=q.h.root.position.clone().add(new V3(0,q.s,0)).sub(o); const a=v.angleTo(d); if(a<best){ best=a; z=q; } } }
+    if(z){ Zombies.marked=z; HUD.toast(`集火：${z.T.name}`); Sfx.tone(800,1200,0.12,0.1); } else HUD.toast('准星对准一只僵尸再下令');
+  },
+  setPaused(v){
+    if(this.state==='over'||this.state==='title') return;
+    this.paused=v; $('pause').classList.toggle('show',v); if(!v) this.lock();
+  },
+  gameOver(){
+    if(this.state==='over') return; this.state='over'; if(Player.mode==='turret') Player.exitTurret();
+    if(document.pointerLockElement) document.exitPointerLock();
+    $('overTxt').innerHTML=`坚守到第 <b>${this.wave}</b> 波 · 击杀 <b>${this.kills}</b> 只僵尸`; setTimeout(()=>$('over').classList.add('show'),1200);
+    HUD.announce('城墙被攻破！','',2500);
+  },
+  update(dt){
+    this.time+=dt;
+    if(this.state==='prep'){ this.timer-=dt; if(this.timer<=0) this.startCombat(); }
+    if(this.state==='combat'){
+      this.spawnT-=dt;
+      if(this.queue.length && this.spawnT<=0 && Zombies.aliveCount()<70){ Zombies.spawn(this.queue.pop(),this.wave); this.spawnT=Math.max(0.25,1.5-this.wave*0.09)*rand(0.5,1.3); }
+      if(!this.queue.length && Zombies.aliveCount()===0) this.endCombat();
+    }
+    const inp=Input.state();
+    Player.update(dt,inp);
+    Turrets.update(dt); Army.update(dt); Zombies.update(dt); World.update(dt,this.time); Fx.update(dt);
+    Wall.flash-=dt; this.hitT-=dt; $('cross').classList.toggle('hit',this.hitT>0);
+    if(this.shake>0){ this.shake-=dt*0.5; camera.position.x+=rand(-1,1)*this.shake*0.5; camera.position.y+=rand(-1,1)*this.shake*0.5; }
+    HUD.update();
+  },
+};
+$('startBtn').onclick=()=>Game.start();
+$('resumeBtn').onclick=()=>Game.setPaused(false);
+$('restartBtn').onclick=()=>{ Game.setPaused(false); Game.reset(); };
+$('againBtn').onclick=()=>{ Game.reset(); Game.lock(); };
+$('sens').oninput=e=>Input.sens=+e.target.value;
+$('ctrlText').innerHTML = IS_TOUCH
+  ? '左下摇杆：在城墙上走动（推到底冲刺）<br>右半屏拖动：转视角 · 射击 / 瞄准 / 换弹 / 切枪<br>「机枪」：遥控墙上的重机枪扫射 · 「集火」：命令全军攻击准星目标<br>波次之间点「商店」招募士兵、买武器、修墙'
+  : 'WASD 在城墙上走动 · Shift 冲刺 · 鼠标瞄准 · 左键射击 · 右键瞄准 / 开镜 · R 换弹 · 1-4 切枪<br><b>F</b> 遥控重机枪扫射（1-3 切换机枪）· <b>T</b> 命令全军集火准星目标<br><b>B</b> 商店：招募民兵 / 狙击手 / 机枪手 / 工匠，买武器，修墙 · <b>N</b> 立即开战 · Esc 暂停';
+
+/* =====================================================================
+   16. 启动
+   ===================================================================== */
+World.build(); Fx.init(); Zombies.init(); Player.buildView(); Player.reset(); Turrets.build(TURRET_SLOTS[0]);
+// 标题画面：镜头在城墙上俯瞰野外
+camera.position.set(-20,12,-6); camera.lookAt(10,3,60);
+addEventListener('resize',()=>{ renderer.setSize(innerWidth,innerHeight); camera.aspect=innerWidth/innerHeight; camera.updateProjectionMatrix(); });
+let last=performance.now();
+function loop(now){
+  requestAnimationFrame(loop);
+  const dt=Math.min(0.05,(now-last)/1000); last=now;
+  if(Game.state==='title'){ const t=now/1000; camera.position.set(Math.sin(t*0.05)*25,13,-8); camera.lookAt(Math.sin(t*0.05)*10,3,60); World.update(dt,t); }
+  else if(Game.state==='over'){ World.update(dt,Game.time); Zombies.update(dt); Fx.update(dt); }
+  else if(!Game.paused && !Shop.open) Game.update(dt);
+  else if(Shop.open){ Game.time+=dt; World.update(dt,Game.time); HUD.update(); }
+  camera.userData.dome.position.copy(camera.position);
+  renderer.render(scene,camera);
+}
+requestAnimationFrame(loop);
+window.CityDebug={ Game, Zombies, Wall, Player, Army, Turrets };
+</script>
+</body>
+</html>
