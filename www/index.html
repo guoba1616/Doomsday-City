@@ -265,47 +265,54 @@ const Sfx = {
 };
 
 /* =====================================================================
-   2. 纹理 & 材质（方块像素风，与 Blockade 一致）
+   2. 材质 & 几何合并（干净低多边形：无贴图、无描边，顶点色 + 竖向明暗渐变）
    ===================================================================== */
-function makeTex(w, h, draw){
-  const c=document.createElement('canvas'); c.width=w; c.height=h; draw(c.getContext('2d'),w,h);
-  const t=new THREE.CanvasTexture(c); t.magFilter=THREE.NearestFilter; t.minFilter=THREE.LinearMipmapLinearFilter;
-  t.wrapS=t.wrapT=THREE.RepeatWrapping; return t;
-}
-function pset(g,x,y,r,gg,b){ g.fillStyle=`rgb(${r|0},${gg|0},${b|0})`; g.fillRect(x,y,1,1); }
-function edgeShade(g,w,h,a){ g.fillStyle=`rgba(0,0,0,${a})`; g.fillRect(0,0,w,1); g.fillRect(0,h-1,w,1); g.fillRect(0,0,1,h); g.fillRect(w-1,0,1,h);
-  g.fillStyle=`rgba(255,255,255,${a*0.45})`; g.fillRect(1,1,w-2,1); g.fillRect(1,1,1,h-2); }
-const BLOCK_TEX = makeTex(8,8,g=>{ for(let x=0;x<8;x++) for(let y=0;y<8;y++){ const k=218+Math.random()*37; pset(g,x,y,k,k,k);} edgeShade(g,8,8,0.3); });
-const STONE_TEX = makeTex(32,32,g=>{   // 石砖：两排砖，错缝
-  for(let y=0;y<32;y++) for(let x=0;x<32;x++){ const k=200+Math.random()*45; pset(g,x,y,k,k,k*0.97); }
-  g.fillStyle='rgba(40,35,30,.55)';
-  for(let r=0;r<2;r++){ const y0=r*16; g.fillRect(0,y0,32,1); const off=r?8:0; g.fillRect((off)%32,y0,1,16); g.fillRect((off+16)%32,y0,1,16); }
-  g.fillStyle='rgba(255,255,255,.12)'; for(let r=0;r<2;r++) g.fillRect(0,r*16+1,32,1);
-});
 const glowMat = c => new THREE.MeshBasicMaterial({ color:c });
-const BLOCK_MAT = new THREE.MeshLambertMaterial({ map:BLOCK_TEX, vertexColors:true });
-const STONE_MAT = new THREE.MeshLambertMaterial({ map:STONE_TEX, vertexColors:true });
+const BLOCK_MAT = new THREE.MeshLambertMaterial({ vertexColors:true });
+const STONE_MAT = BLOCK_MAT;
 const GLOW_MAT  = new THREE.MeshBasicMaterial({ vertexColors:true });
-const CHAR_MAT  = new THREE.MeshLambertMaterial({ map:BLOCK_TEX, vertexColors:true });
+const CHAR_MAT  = new THREE.MeshLambertMaterial({ vertexColors:true });
 
-// 一组方块 [w,h,d,color,x,y,z] → 一个带顶点色的几何体（1 次绘制）。tile>0 时 UV 按世界尺寸平铺（每 tile 米重复一次贴图）
-function mergeBoxes(list, tile=0){
-  const pos=[],nor=[],uv=[],col=[],idx=[],c=new THREE.Color(); let off=0;
-  for(const [w,h,d,hex,x,y,z] of list){
-    const g=new THREE.BoxGeometry(w,h,d); g.translate(x,y,z); c.setHex(hex);
-    const p=g.attributes.position,n=g.attributes.normal,u=g.attributes.uv;
-    const dims=[[d,h],[d,h],[w,d],[w,d],[w,h],[w,h]];
-    for(let i=0;i<p.count;i++){
-      pos.push(p.getX(i),p.getY(i),p.getZ(i)); nor.push(n.getX(i),n.getY(i),n.getZ(i));
-      if(tile>0){ const f=dims[(i/4)|0]; uv.push(u.getX(i)*f[0]/tile, u.getY(i)*f[1]/tile); } else uv.push(u.getX(i),u.getY(i));
-      const sh = 0.94+Math.random()*0.0; col.push(c.r*sh,c.g*sh,c.b*sh);
-    }
-    for(const i of g.index.array) idx.push(i+off); off+=p.count; g.dispose();
+// 人字屋顶三棱柱：x 方向长 1，底宽（z）1，高 1，底面在 y=0
+function prismGeo(){
+  const A=[-.5,0,-.5],B=[-.5,0,.5],C=[-.5,1,0],D=[.5,0,-.5],E=[.5,0,.5],F=[.5,1,0];
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute([A,B,C, D,F,E, B,E,F, B,F,C, A,C,F, A,F,D, A,D,E, A,E,B].flat(),3)); return g;
+}
+const hash3 = (x,y,z,s) => { const v=Math.sin(x*127.1+y*311.7+z*74.7+s*19.3)*43758.5453; return v-Math.floor(v); };
+// 一个形状 → 几何体。数组 [w,h,d,color,x,y,z] = 方块；对象 {g,s,c,p,r,seg,top,seed,jit} = 其他低多边形
+function shapeGeo(e){
+  if(Array.isArray(e)){ const g=new THREE.BoxGeometry(e[0],e[1],e[2]); g.translate(e[4],e[5],e[6]); return g; }
+  let g;
+  switch(e.g){
+    case 'rock': {   // 不规则十二面体：同一位置的顶点按哈希偏移，保持封闭
+      g=new THREE.DodecahedronGeometry(1,0); const p=g.attributes.position, sd=e.seed??Math.random()*99, j=e.jit??0.22;
+      for(let i=0;i<p.count;i++){ const x=p.getX(i),y=p.getY(i),z=p.getZ(i), rx=Math.round(x*100),ry=Math.round(y*100),rz=Math.round(z*100);
+        p.setXYZ(i, x*(1+(hash3(rx,ry,rz,sd)-0.5)*j*2), y*(1+(hash3(ry,rz,rx,sd)-0.5)*j*2), z*(1+(hash3(rz,rx,ry,sd)-0.5)*j*2)); }
+      break; }
+    case 'cone': g=new THREE.ConeGeometry(1,1,e.seg||7); break;
+    case 'cyl':  g=new THREE.CylinderGeometry(e.top??1,1,1,e.seg||6); break;
+    case 'roof': g=prismGeo(); break;
+    default: g=new THREE.BoxGeometry(1,1,1);
+  }
+  const sc=e.s||[1,1,1]; g.scale(sc[0],sc[1],sc[2]);
+  if(e.r){ g.rotateX(e.r[0]); g.rotateY(e.r[1]); g.rotateZ(e.r[2]); }
+  g.translate(e.p[0],e.p[1],e.p[2]); return g;
+}
+// 合并一组形状 → 一个带顶点色的几何体（1 次绘制）。ao：每个形状底部变暗的程度（假环境光遮蔽）
+function mergeBoxes(list, _unused=0, ao=0.22){
+  const pos=[], col=[], c=new THREE.Color();
+  for(const e of list){
+    let g=shapeGeo(e); if(g.index) g=g.toNonIndexed();
+    c.setHex(Array.isArray(e)?e[3]:e.c);
+    const p=g.attributes.position; let y0=Infinity,y1=-Infinity;
+    for(let i=0;i<p.count;i++){ const y=p.getY(i); if(y<y0) y0=y; if(y>y1) y1=y; }
+    for(let i=0;i<p.count;i++){ const y=p.getY(i), t=y1>y0?(y-y0)/(y1-y0):1, k=1-ao+ao*1.15*t;
+      pos.push(p.getX(i),y,p.getZ(i)); col.push(c.r*k,c.g*k,c.b*k); }
+    g.dispose();
   }
   const geo=new THREE.BufferGeometry();
-  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); geo.setAttribute('normal',new THREE.Float32BufferAttribute(nor,3));
-  geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2)); geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
-  geo.setIndex(idx); geo.computeBoundingSphere(); return geo;
+  geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); geo.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  geo.computeVertexNormals(); geo.computeBoundingSphere(); return geo;
 }
 const varyCol = (hex, v=0.08) => { const c=new THREE.Color(hex), k=1-Math.random()*v; return c.setRGB(c.r*k,c.g*k,c.b*k).getHex(); };
 
@@ -348,9 +355,9 @@ if(SHADOWS){
   g.setAttribute('color',new THREE.Float32BufferAttribute(cols,3));
   const dome=new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide,fog:false,depthWrite:false}));
   dome.renderOrder=-10; scene.add(dome); camera.userData.dome=dome;
-  const sunM=new THREE.Mesh(new THREE.BoxGeometry(34,34,2),new THREE.MeshBasicMaterial({color:0xffc070,fog:false}));
+  const sunM=new THREE.Mesh(new THREE.CircleGeometry(17,32),new THREE.MeshBasicMaterial({color:0xffd080,fog:false}));
   sunM.position.set(70,30,380); sunM.lookAt(0,0,0); dome.add(sunM);
-  const halo=new THREE.Mesh(new THREE.BoxGeometry(50,50,1),new THREE.MeshBasicMaterial({color:0xffa060,fog:false,transparent:true,opacity:0.25}));
+  const halo=new THREE.Mesh(new THREE.CircleGeometry(30,32),new THREE.MeshBasicMaterial({color:0xffa060,fog:false,transparent:true,opacity:0.22}));
   halo.position.set(70,30,382); halo.lookAt(0,0,0); dome.add(halo);
   const sp=[]; for(let i=0;i<300;i++){ const a=Math.random()*Math.PI*2, e=rand(0.3,1.4); sp.push(Math.cos(a)*Math.cos(e)*390, Math.sin(e)*390, Math.sin(a)*Math.cos(e)*390); }
   const sg=new THREE.BufferGeometry(); sg.setAttribute('position',new THREE.Float32BufferAttribute(sp,3));
@@ -365,22 +372,17 @@ const World = {
   build(){
     const S=[], B=[], G=[];   // 石砖 / 方块 / 发光
     const W=CFG.wall, top=W.top;
-    // --- 地面（整块草地 + 花斑） ---
-    B.push([150,0.4,240,0x5d7d3c,0,-0.2,30]);
-    for(let i=0;i<70;i++){ const x=rand(-48,48), z=rand(-75,145), s=rand(2,7); B.push([s,0.42,s*rand(0.6,1.4),varyCol(0x587a36,0.18),x,-0.19,z]); }
-    // 野外土路 & 弹坑
-    B.push([5,0.44,145,0x7a5a3a,0,-0.18,74]);
-    for(let i=0;i<14;i++){ B.push([rand(2,4),0.45,rand(2,4),0x5a4430,rand(-38,38),-0.17,rand(10,120)]); }
-    // 村庄道路 & 广场
-    B.push([5,0.44,70,0x8a6a48,0,-0.18,-40]); B.push([70,0.44,4,0x8a6a48,0,-0.18,-20]); B.push([14,0.45,14,0x9a8a70,0,-0.17,-38]);
+    this.ground();
 
     // --- 城墙 ---
     S.push([W.half*2,top,4,0xb0a898,0,top/2,0]);                    // 墙体
     S.push([W.half*2,0.55,0.6,0xa09888,0,top+0.275,1.7]);              // 外沿矮墙
     for(let x=-W.half+1.2; x<W.half; x+=2.4){
-      S.push([1.2,0.5,0.6,0xb8b0a0,x,top+0.8,1.7]);               // 垛口
+      S.push([1.2,0.5,0.6,varyCol(0xb8b0a0,0.07),x,top+0.8,1.7]);               // 垛口
     }
     S.push([W.half*2,0.5,0.5,0x9a9284,0,0.25,2.2]);                // 墙脚
+    S.push([W.half*2,0.3,4.3,0xa39b8c,0,top-0.15,0.05]);           // 墙顶檐口
+    for(let x=-W.half+2; x<W.half; x+=4) S.push([rand(1.5,3),rand(0.6,1.4),0.06,varyCol(0xa8a090,0.1),x+rand(-1,1),rand(1,top-1.5),2.02]);   // 墙面色斑
     for(let x=-W.half+4; x<W.half; x+=8) S.push([1.2,top,0.6,0xa49c8c,x,top/2,2.2]);   // 扶壁
     B.push([W.half*2,0.12,3.6,0x7a6a58,0,top+0.06,-0.1]);          // 走道木板
     B.push([W.half*2,0.12,0.14,0x5a4028,0,top+1.0,-1.9]);          // 内侧护栏
@@ -402,22 +404,31 @@ const World = {
     }
 
     // --- 两侧悬崖（把战场围成一条通道） ---
-    for(const sx of [-1,1]) for(let z=-80; z<150; z+=3){
-      const h=rand(9,20)+(z>-4&&z<6?6:0);
-      B.push([rand(6,10),h,3.2,varyCol(0x6a6258,0.2),sx*rand(52,55),h/2,z]);
-      if(Math.random()<0.4) B.push([3,0.6,3.2,0x5d7d3c,sx*rand(48,50),h*0.4,z]);
+    for(const sx of [-1,1]) for(let z=-82; z<155; z+=rand(4,6)){
+      const h=rand(10,20)+(z>-4&&z<6?6:0);
+      B.push({g:'rock',s:[rand(5,8),h*0.6,rand(4,6)],c:varyCol(0x7a7266,0.18),p:[sx*rand(54,57),h*0.3,z],r:[0,rand(0,3),0]});
+      if(Math.random()<0.5) B.push({g:'rock',s:[rand(2.5,4),rand(1.5,3),rand(2.5,4)],c:varyCol(0x6e675c,0.15),p:[sx*rand(48,51),0.6,z+rand(-2,2)]});
+      if(Math.random()<0.35) B.push({g:'rock',s:[rand(3,5),0.8,rand(3,4)],c:varyCol(0x5f8a3e,0.15),p:[sx*rand(53,56),h*0.6+0.2,z],jit:0.3});
     }
-    for(let x=-50;x<=50;x+=3){ const h=rand(12,22); B.push([3.2,h,6,varyCol(0x6a6258,0.2),x,h/2,-82]); }
+    for(let x=-58;x<=58;x+=rand(5,7)){ const h=rand(14,24); B.push({g:'rock',s:[rand(5,8),h*0.6,rand(5,7)],c:varyCol(0x7a7266,0.18),p:[x,h*0.3,-83],r:[0,rand(0,3),0]}); }
 
     // --- 野外：树、石头、枯木、破栅栏、车残骸 ---
     const freeOf = (x,z)=>Math.abs(x)>3.5;
-    for(let i=0;i<55;i++){
+    for(let i=0;i<60;i++){
       const x=rand(-46,46), z=rand(18,150); if(!freeOf(x,z)) continue;
-      if(Math.random()<0.7){ const h=rand(2.5,5); B.push([0.7,h,0.7,0x5a3e24,x,h/2,z]);
-        const lc=varyCol(Math.random()<0.5?0x3e6a2a:0x4a5a26,0.2); B.push([rand(3,4.4),2.2,rand(3,4.4),lc,x,h+0.6,z]); B.push([rand(2,2.8),1.4,rand(2,2.8),lc,x,h+2.2,z]); }
-      else { const h=rand(2,4); B.push([0.5,h,0.5,0x4a3a2a,x,h/2,z]); B.push([1.6,0.35,0.35,0x4a3a2a,x+0.6,h*0.7,z]); }
+      const r=Math.random();
+      if(r<0.42){ const h=rand(1.8,3.2), lc=varyCol(0x5a8a34,0.22);          // 圆冠阔叶树
+        B.push({g:'cyl',top:0.7,s:[0.3,h,0.3],c:0x6a4a2c,p:[x,h/2,z],seg:5});
+        B.push({g:'rock',s:[rand(1.7,2.3),rand(1.5,2),rand(1.7,2.3)],c:lc,p:[x,h+1,z],jit:0.15});
+        B.push({g:'rock',s:[rand(1.1,1.5),rand(1,1.3),rand(1.1,1.5)],c:varyCol(lc,0.12),p:[x+rand(-0.7,0.7),h+2.2,z+rand(-0.7,0.7)],jit:0.15}); }
+      else if(r<0.82){ const h=rand(1,1.8), lc=varyCol(0x3f6e3a,0.2);         // 松树
+        B.push({g:'cyl',top:0.7,s:[0.25,h+1,0.25],c:0x5a3e24,p:[x,(h+1)/2,z],seg:5});
+        for(let k=0;k<3;k++) B.push({g:'cone',seg:7,s:[2.1-k*0.55,2.2,2.1-k*0.55],c:varyCol(lc,0.06),p:[x,h+1+k*1.15,z],r:[0,Math.random()*3,0]}); }
+      else { const h=rand(2,4); B.push({g:'cyl',top:0.6,s:[0.25,h,0.25],c:0x4a3a2a,p:[x,h/2,z],seg:5}); B.push({g:'cyl',top:0.5,s:[0.14,1.6,0.14],c:0x4a3a2a,p:[x+0.5,h*0.7,z],r:[0,0,-0.9],seg:5}); }
     }
-    for(let i=0;i<40;i++){ const x=rand(-46,46), z=rand(12,150), s=rand(0.6,2); if(freeOf(x,z)) B.push([s,s*0.7,s*rand(0.8,1.3),varyCol(0x7a7670,0.25),x,s*0.35,z]); }
+    for(let i=0;i<45;i++){ const x=rand(-46,46), z=rand(8,150), sz=rand(0.5,1.6); if(freeOf(x,z)) B.push({g:'rock',s:[sz,sz*rand(0.45,0.7),sz*rand(0.8,1.3)],c:varyCol(0x8c877e,0.22),p:[x,sz*0.15,z],r:[0,rand(0,3),0]}); }
+    for(let i=0;i<160;i++){ const x=rand(-47,47), z=rand(-75,150); if(Math.abs(x)<3.2 || (z>-4&&z<4)) continue;   // 草丛
+      B.push({g:'cone',seg:4,s:[rand(0.15,0.3),rand(0.3,0.6),rand(0.15,0.3)],c:varyCol(0x6f9a48,0.25),p:[x,0.2,z],r:[0,Math.random()*3,0]}); }
     for(let z=30; z<120; z+=rand(14,26)){ const x=rand(-34,-6)*(Math.random()<0.5?1:-1); for(let k=0;k<rand(3,6);k++){ if(Math.random()<0.3) continue; B.push([0.18,1.1,0.18,0x6a4a2a,x+k*1.6,0.55,z]); B.push([1.6,0.15,0.1,0x6a4a2a,x+k*1.6+0.8,0.8,z]); } }
     for(const [x,z,c] of [[-18,46,0x8a3a2a],[24,78,0x3a5a7a]]){   // 废弃汽车
       B.push([2,1,4,c,x,0.6,z]); B.push([1.8,0.7,2,c,x,1.4,z-0.2]); B.push([1.7,0.5,1.9,0x2a3038,x,1.45,z-0.2]);
@@ -454,13 +465,38 @@ const World = {
       this.villagers.push({h, tx:h.root.position.x, tz:h.root.position.z, wait:rand(0,4), ph:Math.random()*6});
     }
   },
+  ground(){
+    const g=new THREE.PlaneGeometry(150,240,120,192); g.rotateX(-Math.PI/2); g.translate(0,0,30);
+    const p=g.attributes.position, col=[], c=new THREE.Color();
+    const gA=new THREE.Color(0x587f38), gB=new THREE.Color(0x7d9c48), dirt=new THREE.Color(0x7d6248), path=new THREE.Color(0xa08868), dark=new THREE.Color(0x4e3e2e);
+    const ss=(a,b,x)=>{ const t=clamp((x-a)/(b-a),0,1); return t*t*(3-2*t); };
+    const craters=[]; for(let i=0;i<14;i++) craters.push([rand(-38,38),rand(12,120),rand(1,2)]);
+    for(let i=0;i<p.count;i++){
+      const x=p.getX(i), z=p.getZ(i);
+      const n=0.5+0.25*Math.sin(x*0.11+z*0.07)+0.15*Math.sin(x*0.37-z*0.23)+0.1*Math.sin(z*0.5+x*0.05);
+      c.copy(gA).lerp(gB,clamp(n,0,1));
+      if(z>1){
+        const rw=2.4+Math.sin(z*0.2)*0.4; c.lerp(dirt,(1-ss(rw-0.8,rw+0.7,Math.abs(x)))*0.95);   // 土路
+        c.lerp(dirt,(1-ss(2.5,7,z))*0.75);                                                        // 墙根泥地
+        for(const [cx,cz,r] of craters){ const d=Math.hypot(x-cx,z-cz); if(d<r+1) c.lerp(dark,(1-ss(r-0.5,r+1,d))*0.7); }
+      } else {
+        let k=0; if(z>-75) k=1-ss(1.8,2.9,Math.abs(x));
+        if(Math.abs(x)<36) k=Math.max(k,1-ss(1.2,2.5,Math.abs(z+20)));
+        k=Math.max(k,1-ss(5,7.5,Math.hypot(x,z+38)));
+        c.lerp(path,k*0.9);
+      }
+      col.push(c.r,c.g,c.b);
+    }
+    g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+    const m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({vertexColors:true})); m.receiveShadow=SHADOWS; scene.add(m);
+  },
   house(B,G,x,z){
     const w=rand(6,8), d=rand(5,7), h=rand(3,4.2);
     const wc=Math.random()<0.5?varyCol(0xd8c8a0,0.1):varyCol(0x9a7048,0.12), rc=varyCol(Math.random()<0.5?0x8a3a2a:0x5a4a3a,0.15), post=0x4a3220;
     B.push([w,h,d,wc,x,h/2,z]);
     for(const [dx,dz] of [[-1,-1],[1,-1],[-1,1],[1,1]]) B.push([0.35,h,0.35,post,x+dx*(w/2),h/2,z+dz*(d/2)]);
     B.push([w+0.2,0.3,d+0.2,post,x,h,z]);
-    for(let i=0;i<4;i++){ const dd=(d+1.2)*(1-i/4.2); B.push([w+0.8,0.55,dd,i===3?varyCol(rc,0.1):rc,x,h+0.35+i*0.55,z]); }
+    B.push({g:'roof',s:[w+0.9,rand(1.8,2.4),d+1.2],c:rc,p:[x,h+0.1,z]});
     B.push([1.2,2,0.12,0x3a2414,x,1,z+d/2+0.04]);                     // 门（朝城墙）
     for(const sx of [-1,1]){ G.push([0.08,0.8,1,0xffc860,x+sx*(w/2+0.03),h*0.55,z]); }
     G.push([0.9,0.8,0.08,0xffc860,x+w/4+0.4,h*0.6,z+d/2+0.03]);
@@ -489,9 +525,9 @@ function humanGeos(c){
   if(c.helmet) head.push([0.54,0.18,0.54,c.helmet,0,0.47,0],[0.56,0.04,0.56,c.helmet,0,0.38,0.02]);
   const torso=[[0.5,0.7,0.28,c.shirt,0,0.35,0]];
   if(c.vest) torso.push([0.52,0.42,0.3,c.vest,0,0.42,0],[0.4,0.04,0.31,0x2a2a2a,0,0.12,0]);
-  const g={ head:mergeBoxes(head), torso:mergeBoxes(torso),
-    arm:mergeBoxes([[0.2,0.32,0.2,c.shirt,0,-0.16,0],[0.19,0.4,0.19,c.skin,0,-0.5,0]]),
-    leg:mergeBoxes([[0.24,0.66,0.24,c.pants,0,-0.33,0],[0.25,0.12,0.3,0x2a2622,0,-0.69,0.03]]) };
+  const g={ head:mergeBoxes(head,0,0.1), torso:mergeBoxes(torso,0,0.1),
+    arm:mergeBoxes([[0.2,0.32,0.2,c.shirt,0,-0.16,0],[0.19,0.4,0.19,c.skin,0,-0.5,0]],0,0.1),
+    leg:mergeBoxes([[0.24,0.66,0.24,c.pants,0,-0.33,0],[0.25,0.12,0.3,0x2a2622,0,-0.69,0.03]],0,0.1) };
   geoCache.set(key,g); return g;
 }
 function buildHuman(g, s=1){
