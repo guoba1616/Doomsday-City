@@ -356,9 +356,9 @@ if(SHADOWS){
   const dome=new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide,fog:false,depthWrite:false}));
   dome.renderOrder=-10; scene.add(dome); camera.userData.dome=dome;
   const sunM=new THREE.Mesh(new THREE.CircleGeometry(17,32),new THREE.MeshBasicMaterial({color:0xffd080,fog:false}));
-  sunM.position.set(70,30,380); sunM.lookAt(0,0,0); dome.add(sunM);
+  sunM.position.set(70,48,375); sunM.lookAt(0,0,0); dome.add(sunM);
   const halo=new THREE.Mesh(new THREE.CircleGeometry(30,32),new THREE.MeshBasicMaterial({color:0xffa060,fog:false,transparent:true,opacity:0.22}));
-  halo.position.set(70,30,382); halo.lookAt(0,0,0); dome.add(halo);
+  halo.position.set(70,48,377); halo.lookAt(0,0,0); dome.add(halo);
   const sp=[]; for(let i=0;i<300;i++){ const a=Math.random()*Math.PI*2, e=rand(0.3,1.4); sp.push(Math.cos(a)*Math.cos(e)*390, Math.sin(e)*390, Math.sin(a)*Math.cos(e)*390); }
   const sg=new THREE.BufferGeometry(); sg.setAttribute('position',new THREE.Float32BufferAttribute(sp,3));
   dome.add(new THREE.Points(sg,new THREE.PointsMaterial({color:0xffffff,size:1.6,sizeAttenuation:false,fog:false,transparent:true,opacity:0.7})));
@@ -368,7 +368,7 @@ if(SHADOWS){
    4. 世界：城墙 / 野外 / 村庄 / 两侧悬崖
    ===================================================================== */
 const World = {
-  torches:[], villagers:[], wallFront:null,
+  torches:[], villagers:[], wallFront:null, chimneys:[], flags:[], crows:[], clouds:null, smokeT:0,
   build(){
     const S=[], B=[], G=[];   // 石砖 / 方块 / 发光
     const W=CFG.wall, top=W.top;
@@ -408,7 +408,6 @@ const World = {
       const h=rand(10,20)+(z>-4&&z<6?6:0);
       B.push({g:'rock',s:[rand(5,8),h*0.6,rand(4,6)],c:varyCol(0x7a7266,0.18),p:[sx*rand(54,57),h*0.3,z],r:[0,rand(0,3),0]});
       if(Math.random()<0.5) B.push({g:'rock',s:[rand(2.5,4),rand(1.5,3),rand(2.5,4)],c:varyCol(0x6e675c,0.15),p:[sx*rand(48,51),0.6,z+rand(-2,2)]});
-      if(Math.random()<0.35) B.push({g:'rock',s:[rand(3,5),0.8,rand(3,4)],c:varyCol(0x5f8a3e,0.15),p:[sx*rand(53,56),h*0.6+0.2,z],jit:0.3});
     }
     for(let x=-58;x<=58;x+=rand(5,7)){ const h=rand(14,24); B.push({g:'rock',s:[rand(5,8),h*0.6,rand(5,7)],c:varyCol(0x7a7266,0.18),p:[x,h*0.3,-83],r:[0,rand(0,3),0]}); }
 
@@ -452,10 +451,12 @@ const World = {
     // 农田
     for(const sx of [-1,1]) for(let r=0;r<4;r++){ B.push([7,0.5,1.2,0x5a3a22,sx*44,0,-30-r*2]); for(let k=0;k<6;k++) B.push([0.4,0.6,0.4,0x7aa03a,sx*44-3+k*1.2,0.5,-30-r*2]); }
 
+    this.details(B,G,S);
     const mk=(list,mat,tile,shadow)=>{ const m=new THREE.Mesh(mergeBoxes(list,tile),mat); m.receiveShadow=SHADOWS; m.castShadow=SHADOWS&&shadow; scene.add(m); return m; };
     this.wallFront = mk(S,STONE_MAT,1.5,true);
     mk(B,BLOCK_MAT,1,true);
-    const gm=new THREE.Mesh(mergeBoxes(G,0),GLOW_MAT); scene.add(gm);
+    const gm=new THREE.Mesh(mergeBoxes(G,0,0),GLOW_MAT); scene.add(gm);
+    this.ambient();
 
     // 村民
     const vcols=[0xa84a3a,0x3a6aa8,0x6a8a3a,0xb8983a,0x8a5aa0,0xd0d0c0];
@@ -463,6 +464,124 @@ const World = {
       const geos=humanGeos({skin:[0xe0b088,0xc89060,0x8a5a3a][i%3], shirt:vcols[i%6], pants:varyCol(0x4a4038,0.3), hair:[0x2a1a10,0x6a4a20,0xd8b030][i%3], eye:0x1a1a1a});
       const h=buildHuman(geos,0.95); h.root.position.set(rand(-25,25),0,rand(-65,-12)); scene.add(h.root);
       this.villagers.push({h, tx:h.root.position.x, tz:h.root.position.z, wait:rand(0,4), ph:Math.random()*6});
+    }
+  },
+  // ---------- 小道具 ----------
+  barrel(B,x,z){ B.push({g:'cyl',top:1,seg:9,s:[0.38,0.9,0.38],c:varyCol(0x7a5230,0.1),p:[x,0.45,z]});
+    B.push({g:'cyl',top:1,seg:9,s:[0.4,0.07,0.4],c:0x3a3a3a,p:[x,0.7,z]}); B.push({g:'cyl',top:1,seg:9,s:[0.4,0.07,0.4],c:0x3a3a3a,p:[x,0.2,z]}); },
+  crate(B,x,z,sz=0.7,y=0){ B.push([sz,sz,sz,varyCol(0x9a7448,0.12),x,y+sz/2,z]); B.push([sz+0.02,0.08,sz+0.02,0x6a4a2c,x,y+sz*0.5,z]); },
+  bush(B,x,z,k=1){ const c=varyCol(0x4f7d34,0.25);
+    B.push({g:'rock',s:[0.9*k,0.65*k,0.9*k],c,p:[x,0.35*k,z],jit:0.2}); B.push({g:'rock',s:[0.6*k,0.5*k,0.6*k],c:varyCol(c,0.12),p:[x+0.55*k,0.28*k,z+0.25*k],jit:0.2});
+    if(Math.random()<0.4) for(let i=0;i<3;i++) B.push([0.12,0.12,0.12,[0xe05a4a,0xf0d040,0xf0f0f0][i],x+rand(-0.5,0.5)*k,0.75*k,z+rand(-0.4,0.4)*k]); },
+  log(B,x,z,len,ry){ B.push({g:'cyl',top:1,seg:7,s:[0.28,len,0.28],c:0x6a4a2c,p:[x,0.28,z],r:[Math.PI/2,ry,0]}); },
+  tree(B,x,z,k=1){ const h=rand(1.8,3)*k, lc=varyCol(0x5a8a34,0.22);
+    B.push({g:'cyl',top:0.7,s:[0.3*k,h,0.3*k],c:0x6a4a2c,p:[x,h/2,z],seg:5});
+    B.push({g:'rock',s:[rand(1.7,2.2)*k,rand(1.5,1.9)*k,rand(1.7,2.2)*k],c:lc,p:[x,h+k,z],jit:0.15});
+    B.push({g:'rock',s:[1.2*k,1.1*k,1.2*k],c:varyCol(lc,0.12),p:[x+rand(-0.7,0.7)*k,h+2.2*k,z+rand(-0.7,0.7)*k],jit:0.15}); },
+  details(B,G,S){
+    const top=CFG.wall.top, W=CFG.wall;
+    // ===== 野外 =====
+    for(let i=0;i<10;i++){   // 墙前拒马
+      const x=rand(-38,38), z=rand(9,17); if(Math.abs(x)<4.5) continue; const ry=rand(-0.25,0.25);
+      B.push({g:'cyl',top:1,seg:6,s:[0.14,3.4,0.14],c:0x6a4a2c,p:[x,0.55,z],r:[Math.PI/2,Math.PI/2+ry,0]});
+      for(let k=-1;k<=1;k++){ const sx=x+k*1.1*Math.cos(ry), sz=z-k*1.1*Math.sin(ry);
+        B.push({g:'cyl',top:0.25,seg:5,s:[0.08,1.9,0.08],c:0x8a6a40,p:[sx,0.6,sz],r:[0.75,ry,0]}); B.push({g:'cyl',top:0.25,seg:5,s:[0.08,1.9,0.08],c:0x8a6a40,p:[sx,0.6,sz],r:[-0.75,ry,0]}); }
+    }
+    for(let i=0;i<6;i++){   // 沙袋掩体
+      const x=rand(-36,30), z=rand(18,34); if(Math.abs(x)<5) continue;
+      for(let row=0;row<2;row++) for(let k=0;k<5-row;k++) B.push({g:'rock',s:[0.42,0.2,0.28],c:varyCol(0xb8a478,0.12),p:[x+k*0.8+row*0.4,0.18+row*0.34,z],jit:0.12});
+    }
+    for(let i=0;i<30;i++){ const x=rand(-40,40), z=rand(3,10); if(Math.abs(x)<3) continue; B.push([rand(0.2,0.35),0.07,0.07,0xe8e0cc,x,0.04,z]); }   // 骨头
+    for(let i=0;i<55;i++){ const x=rand(-46,46), z=rand(10,150); if(Math.abs(x)>4) this.bush(B,x,z,rand(0.7,1.3)); }
+    for(let i=0;i<40;i++){ const x=rand(-46,46), z=rand(6,150); if(Math.abs(x)<3.5) continue; const c=[0xe05a4a,0xf0d040,0xf0f0f0,0xb070e0][(Math.random()*4)|0];
+      for(let k=0;k<6;k++) B.push([0.13,0.13,0.13,c,x+rand(-1.2,1.2),0.1,z+rand(-1.2,1.2)]); }                   // 野花
+    for(let i=0;i<12;i++){ const x=rand(-45,45), z=rand(20,150); if(Math.abs(x)>4) this.log(B,x,z,rand(1.8,3.2),rand(0,3)); }
+    for(let i=0;i<12;i++){ const x=rand(-45,45), z=rand(20,150); if(Math.abs(x)>4) B.push({g:'cyl',top:0.85,seg:7,s:[0.4,0.45,0.4],c:0x7a5a38,p:[x,0.22,z]}); }
+    for(let z=22; z<150; z+=18){ const tilt=rand(-0.18,0.18);   // 电线杆
+      B.push({g:'cyl',top:0.8,seg:6,s:[0.16,7,0.16],c:0x5a4030,p:[5.6,3.5,z],r:[0,0,tilt]}); B.push([2,0.14,0.14,0x5a4030,5.6-Math.sin(tilt)*3,6.6,z]); }
+    // 废弃农舍
+    B.push([6,2.6,0.4,0xb8a888,31,1.3,92]); B.push([0.4,3.4,6,0xb0a080,28,1.7,95]); B.push([2.5,1.4,0.4,0xb8a888,32.6,0.7,98]);
+    B.push({g:'roof',s:[6.5,2,6.6],c:0x6a4030,p:[31.5,1.6,95],r:[0,0,0.4]});
+    for(let i=0;i<8;i++) B.push({g:'rock',s:[rand(0.3,0.7),rand(0.2,0.4),rand(0.3,0.7)],c:varyCol(0xa89878,0.15),p:[31+rand(-3,3),0.1,95+rand(-3,4)]});
+    // 帐篷营地
+    for(const [x,z,c] of [[-30,62,0xb8a878],[-25.5,66,0x7a8a5a],[-33,67,0xa87a58]]){ B.push({g:'cone',seg:4,s:[1.8,2.3,1.8],c,p:[x,1.15,z],r:[0,0.785,0]}); B.push([0.5,1.1,0.05,0x2a2018,x,0.55,z+1.29]); }
+    B.push({g:'rock',s:[0.8,0.15,0.8],c:0x2a2420,p:[-29,0.05,65.5]}); this.log(B,-28,64.6,1.4,0.3); this.crate(B,-26.5,63.5,0.7);
+    // 墓地
+    for(let i=0;i<7;i++){ const x=-38+(i%4)*1.8, z=28+Math.floor(i/4)*2.4, t=rand(-0.15,0.15);
+      B.push({g:'rock',s:[0.6,0.25,1.1],c:0x6a5a42,p:[x,0.05,z+0.9]}); B.push({s:[0.12,1.1,0.12],c:0x8a8a84,p:[x,0.55,z],r:[0,0,t]}); B.push({s:[0.6,0.12,0.12],c:0x8a8a84,p:[x,0.8,z],r:[0,0,t]}); }
+    // 稻草人
+    B.push([0.12,2.2,0.12,0x6a4a2c,14,1.1,42]); B.push([1.6,0.1,0.1,0x6a4a2c,14,1.7,42]); B.push([0.6,0.8,0.3,0x6a7a9a,14,1.55,42]);
+    B.push({g:'rock',s:[0.25,0.28,0.25],c:0xd8c890,p:[14,2.35,42],jit:0.1}); B.push({g:'cone',seg:8,s:[0.5,0.3,0.5],c:0x8a6a30,p:[14,2.62,42]});
+    // 破车
+    B.push([1.4,0.5,2.4,0x7a5a3a,-8,0.65,72]); B.push([1.5,0.5,0.1,0x6a4a2c,-8,1.05,73.2]);
+    for(const dz of [-0.7,0.7]) B.push({g:'cyl',top:1,seg:10,s:[0.5,0.12,0.5],c:0x4a3a2a,p:[-8.8,0.5,72+dz],r:[0,0,Math.PI/2]});
+    B.push({g:'cyl',top:1,seg:10,s:[0.5,0.12,0.5],c:0x4a3a2a,p:[-7.0,0.35,72.2],r:[1.2,0,Math.PI/2]});
+
+    // ===== 城墙装饰 =====
+    for(let x=-36; x<=36; x+=24){   // 外墙挂旗
+      B.push([1.5,3.4,0.06,0x8a2a24,x,top-2,2.06]); B.push([0.7,0.7,0.07,0xd8b040,x,top-1.5,2.09]); B.push([0.3,0.3,0.08,0x8a2a24,x,top-1.5,2.1]);
+      B.push([1.9,0.12,0.14,0x3a2a1a,x,top-0.25,2.1]);
+      for(const dx of [-0.5,0,0.5]) B.push([0.5,0.3,0.06,0x8a2a24,x+dx,top-3.8,2.06]);
+    }
+    for(let i=0;i<22;i++){ const x=rand(-43,43); B.push([rand(1,3),rand(0.3,1.2),0.08,varyCol(0x5a7a3a,0.2),x,rand(0.3,0.9),2.04]); }   // 墙根青苔
+    for(let i=0;i<10;i++){ const x=rand(-43,43), y=rand(1.5,top-1); B.push([0.08,rand(0.8,1.6),0.05,0x6a6258,x,y,2.03]); B.push([0.5,0.08,0.05,0x6a6258,x+0.2,y-0.3,2.03]); }   // 裂缝
+    const busy=[-30,-10,10,30,-36,36];
+    for(let x=-41; x<=41; x+=rand(5,8)){ if(busy.some(b=>Math.abs(b-x)<2.2)) continue;   // 走道内侧补给
+      const r=Math.random();
+      if(r<0.35) this.crate(B,x,-1.45,0.6,top); else if(r<0.6){ B.push({g:'cyl',top:1,seg:9,s:[0.3,0.75,0.3],c:varyCol(0x7a5230,0.1),p:[x,top+0.38,-1.45]}); }
+      else for(let k=0;k<3;k++) B.push({g:'rock',s:[0.38,0.18,0.26],c:varyCol(0xb8a478,0.12),p:[x+k*0.6-0.6,top+0.2,-1.45],jit:0.1});
+    }
+    // 旗杆（塔楼 + 墙头），旗子单独做成会飘的网格
+    const poles=[[-(W.half+4),top+5,0,4.5],[W.half+4,top+5,0,4.5],[-20,top,-1.85,3.2],[20,top,-1.85,3.2]];
+    for(const [x,y,z,h] of poles){ B.push({g:'cyl',top:0.7,seg:6,s:[0.07,h,0.07],c:0x3a2a1a,p:[x,y+h/2,z]}); B.push([0.18,0.18,0.18,0xd8b040,x,y+h+0.05,z]); this.flagAt(x,y+h-0.75,z); }
+
+    // ===== 村庄 =====
+    for(let z=-10; z>=-70; z-=10){ for(const sx of [-1,1]){ const x=sx*3.3;   // 路灯
+      B.push({g:'cyl',top:0.8,seg:6,s:[0.09,3,0.09],c:0x2a2a2a,p:[x,1.5,z]}); B.push([0.5,0.06,0.06,0x2a2a2a,x-sx*0.22,2.95,z]);
+      G.push([0.26,0.32,0.26,0xffd080,x-sx*0.42,2.7,z]); B.push([0.32,0.06,0.32,0x2a2a2a,x-sx*0.42,2.89,z]); } }
+    for(const sx of [-1,1]) for(let z=-6; z>-72; z-=1.3){ if(Math.abs(z+20)<2.5 || Math.abs(z+38)<7.5 || Math.random()<0.08) continue;   // 栅栏
+      B.push([0.1,0.9,0.1,0x8a6a48,sx*15,0.45,z]); B.push([0.06,0.08,1.3,0x8a6a48,sx*15,0.65,z-0.65]); B.push([0.06,0.08,1.3,0x8a6a48,sx*15,0.3,z-0.65]); }
+    for(let i=0;i<12;i++){ const x=rand(7,13)*(Math.random()<0.5?1:-1), z=rand(-72,-8); if(Math.abs(z+38)<8||Math.abs(z+20)<3) continue; this.tree(B,x,z,rand(0.8,1.1)); }
+    for(let i=0;i<20;i++){ const x=rand(-42,42), z=rand(-72,-6); if(Math.abs(x)<4) continue; this.bush(B,x,z,rand(0.6,1)); }
+    for(const [x,z,c] of [[-6.5,-35,0xc84a3a],[6.5,-41,0x3a7ac8]]){   // 集市摊位
+      for(const [dx,dz] of [[-1,-0.8],[1,-0.8],[-1,0.8],[1,0.8]]) B.push([0.1,2.1,0.1,0x6a4a2c,x+dx,1.05,z+dz]);
+      B.push({g:'roof',s:[2.4,0.6,2],c,p:[x,2.1,z]}); B.push([2,0.8,0.6,0x8a6a48,x,0.4,z+0.5]);
+      for(let k=0;k<5;k++) B.push({g:'rock',s:[0.16,0.14,0.16],c:[0xe05a3a,0xf0c040,0x7ab040,0xd88a30,0xa04060][k],p:[x-0.8+k*0.4,0.88,z+0.5],jit:0.1});
+    }
+    B.push([0.1,2,0.1,0x6a4a2c,-20,1,-31]); B.push([0.1,2,0.1,0x6a4a2c,-14,1,-31]); B.push([6,0.03,0.03,0xdddddd,-17,1.9,-31]);   // 晾衣绳
+    for(let k=0;k<5;k++) B.push([0.6,0.7,0.04,[0xd8d8d0,0x5a7aa8,0xc85a4a,0xe0c060,0x8aa86a][k],-19.4+k*1.2,1.5,-31]);
+    for(const sx of [-1,1]) for(let i=0;i<3;i++) B.push({g:'rock',s:[1.1,0.9,1.1],c:varyCol(0xd8b050,0.1),p:[sx*39+i*1.8*sx,0.5,-41-i*0.6],jit:0.12});   // 草垛
+    for(const [x,z] of [[-5,-26],[5,-49],[-4.5,-60]]){ this.barrel(B,x,z); this.crate(B,x+0.8,z+0.3,0.7); }
+  },
+  flagAt(x,y,z){
+    const g=new THREE.PlaneGeometry(1.8,1.1,8,1); g.translate(0.9,0,0);
+    const m=new THREE.Mesh(g,new THREE.MeshLambertMaterial({color:0xa83228,side:THREE.DoubleSide})); m.position.set(x,y,z); scene.add(m);
+    this.flags.push({m, base:Float32Array.from(g.attributes.position.array), ph:Math.random()*6});
+  },
+  ambient(){
+    const dome=camera.userData.dome;
+    // 远山：两圈低多边形山，带雾气色，不受雾影响（跟随相机，形成远景）
+    const far=[], near=[];
+    for(let a=0;a<Math.PI*2;a+=rand(0.09,0.16)){
+      const sunSide=Math.abs(Math.atan2(Math.sin(a),Math.cos(a)))<0.55;   // 正前方（落日方向）压低，露出太阳
+      const r1=rand(300,340), h1=sunSide?rand(16,30):rand(45,95);
+      far.push({g:'cone',seg:5,s:[rand(30,55),h1,rand(30,55)],c:varyCol(0x8a6a86,0.08),p:[Math.sin(a)*r1,h1/2-2,Math.cos(a)*r1],r:[0,rand(0,3),0]});
+      const r2=rand(230,270), h2=sunSide?rand(10,20):rand(30,60);
+      near.push({g:'cone',seg:5,s:[rand(25,40),h2,rand(25,40)],c:varyCol(0x5e4a64,0.08),p:[Math.sin(a+0.07)*r2,h2/2-2,Math.cos(a+0.07)*r2],r:[0,rand(0,3),0]});
+    }
+    dome.add(new THREE.Mesh(mergeBoxes(far,0,0.45),new THREE.MeshBasicMaterial({vertexColors:true,fog:false})));
+    dome.add(new THREE.Mesh(mergeBoxes(near,0,0.5),new THREE.MeshBasicMaterial({vertexColors:true,fog:false})));
+    // 云
+    const cl=[]; for(let i=0;i<14;i++){ const a=rand(0,Math.PI*2), r=rand(180,320), y=rand(85,150), c=Math.cos(a)>0.3?0xe8a890:0x8a6a8a;
+      for(let k=0;k<4;k++) cl.push({g:'rock',s:[rand(14,26),rand(4,7),rand(9,15)],c:varyCol(c,0.08),p:[Math.sin(a)*r+rand(-18,18),y+rand(-3,3),Math.cos(a)*r+rand(-10,10)],jit:0.25}); }
+    this.clouds=new THREE.Mesh(mergeBoxes(cl,0,0.35),new THREE.MeshBasicMaterial({vertexColors:true,fog:false,transparent:true,opacity:0.85})); dome.add(this.clouds);
+    // 乌鸦
+    const wingG=new THREE.BoxGeometry(0.6,0.04,0.22), bodyG=new THREE.BoxGeometry(0.16,0.14,0.45), bm=new THREE.MeshBasicMaterial({color:0x151515});
+    for(let i=0;i<8;i++){
+      const g=new THREE.Group(); g.add(new THREE.Mesh(bodyG,bm));
+      const wl=new THREE.Mesh(wingG,bm), wr=new THREE.Mesh(wingG,bm); wl.geometry=wingG; const pl=new THREE.Group(), pr=new THREE.Group();
+      wl.position.x=-0.3; wr.position.x=0.3; pl.add(wl); pr.add(wr); g.add(pl,pr); scene.add(g);
+      this.crows.push({g,pl,pr,cx:rand(-25,25),cz:rand(40,90),r:rand(10,25),y:rand(16,28),a:rand(0,6),sp:rand(0.25,0.45)*(Math.random()<0.5?1:-1),ph:rand(0,6)});
     }
   },
   ground(){
@@ -498,11 +617,23 @@ const World = {
     B.push([w+0.2,0.3,d+0.2,post,x,h,z]);
     B.push({g:'roof',s:[w+0.9,rand(1.8,2.4),d+1.2],c:rc,p:[x,h+0.1,z]});
     B.push([1.2,2,0.12,0x3a2414,x,1,z+d/2+0.04]);                     // 门（朝城墙）
-    for(const sx of [-1,1]){ G.push([0.08,0.8,1,0xffc860,x+sx*(w/2+0.03),h*0.55,z]); }
-    G.push([0.9,0.8,0.08,0xffc860,x+w/4+0.4,h*0.6,z+d/2+0.03]);
-    if(Math.random()<0.5){ B.push([0.7,1.6,0.7,0x7a6a5a,x+w/3,h+2.2,z-d/5]); }
+    for(const sx of [-1,1]){ G.push([0.08,0.8,1,0xffc860,x+sx*(w/2+0.03),h*0.55,z]); B.push([0.1,1,1.2,post,x+sx*(w/2+0.01),h*0.55,z]); }
+    G.push([0.9,0.8,0.08,0xffc860,x+w/4+0.4,h*0.6,z+d/2+0.03]); B.push([1.1,1,0.1,post,x+w/4+0.4,h*0.6,z+d/2+0.01]);
+    B.push([1.1,0.25,0.3,0x6a4a2c,x+w/4+0.4,h*0.6-0.6,z+d/2+0.15]);                                   // 花箱
+    for(let k=0;k<4;k++) B.push([0.16,0.16,0.16,[0xe05a4a,0xf0d040,0xf0f0f0,0xd070c0][k],x+w/4+0.4-0.39+k*0.26,h*0.6-0.4,z+d/2+0.15]);
+    B.push([1.6,0.12,0.9,0x6a5a48,x,0.06,z+d/2+0.5]);                                                // 门口台阶
+    if(Math.random()<0.6){ B.push([0.7,1.6,0.7,0x7a6a5a,x+w/3,h+2.2,z-d/5]); B.push([0.85,0.15,0.85,0x5a4a3a,x+w/3,h+3.05,z-d/5]); this.chimneys.push(new V3(x+w/3,h+3.2,z-d/5)); }
+    if(Math.random()<0.6){ const bx=x-w/2-0.7, bz=z+rand(-1,1.5); this.barrel(B,bx,bz); if(Math.random()<0.5) this.barrel(B,bx,bz+0.9); this.crate(B,bx+0.1,bz-1,0.8); }
+    if(Math.random()<0.4) this.bush(B,x+w/2+1,z+rand(-2,2),1);
   },
   update(dt, t){
+    for(const f of this.flags){ const p=f.m.geometry.attributes.position, b=f.base;
+      for(let i=0;i<p.count;i++){ const x=b[i*3]; p.setZ(i, Math.sin(t*5+f.ph-x*2.6)*0.16*x); p.setY(i, b[i*3+1]-x*0.06+Math.sin(t*3.3+x*2)*0.03*x); }
+      p.needsUpdate=true; f.m.geometry.computeVertexNormals(); f.m.rotation.y=Math.sin(t*0.4+f.ph)*0.5+0.6; }
+    for(const c of this.crows){ c.a+=c.sp*dt; c.g.position.set(c.cx+Math.cos(c.a)*c.r, c.y+Math.sin(t*0.7+c.ph)*1.5, c.cz+Math.sin(c.a)*c.r);
+      c.g.rotation.y=-c.a+(c.sp>0?0:Math.PI); const w=Math.sin(t*9+c.ph)*0.6; c.pl.rotation.z=w; c.pr.rotation.z=-w; }
+    if(this.clouds) this.clouds.rotation.y+=dt*0.004;
+    this.smokeT-=dt; if(this.smokeT<=0){ this.smokeT=0.3; for(const c of this.chimneys) Fx.burst(c,0x8a8680,1,0.25,0.4,-0.02,3.2); }
     for(const L of this.torches) L.intensity = L.userData.base ?? (L.userData.base=L.intensity), L.intensity = L.userData.base*(0.85+Math.sin(t*13+L.position.x)*0.08+Math.random()*0.08);
     for(const v of this.villagers){
       const p=v.h.root.position;
@@ -557,11 +688,11 @@ const Fx = {
       const l=new THREE.Line(g,new THREE.LineBasicMaterial({color:0xffe090,transparent:true,opacity:0})); l.frustumCulled=false; scene.add(l); this.tracers.push({l,life:0});
     }
   },
-  burst(p, color, n, speed=3, size=0.12, grav=1){
+  burst(p, color, n, speed=3, size=0.12, grav=1, life=0){
     const c=new THREE.Color(color);
     for(let k=0;k<n;k++){
       const i=this.parts.findIndex(q=>q.life<=0); if(i<0) return; const q=this.parts[i];
-      q.life=rand(0.4,0.9); q.max=q.life; q.p.copy(p); q.v.set(rand(-1,1),rand(0.2,1.5),rand(-1,1)).multiplyScalar(speed); q.s=size*rand(0.6,1.3); q.g=grav;
+      q.life=life?rand(life*0.8,life*1.2):rand(0.4,0.9); q.max=q.life; q.p.copy(p); q.v.set(rand(-1,1),rand(0.2,1.5),rand(-1,1)).multiplyScalar(speed); q.s=size*rand(0.6,1.3); q.g=grav;
       this.mesh.setColorAt(i,c);
     }
     this.mesh.instanceColor.needsUpdate=true;
